@@ -1,6 +1,6 @@
 {
   "name": "playcraft",
-  "version": "1.9.0-rc.0",
+  "version": "1.9.0-rc.5",
   "module": "dist/playcraft.module.js",
   "main": "dist/playcraft.js",
   "types": "./index.d.ts",
@@ -8,6 +8,7 @@
     "dist",
     "plugins.js",
     "core.js",
+    "react.js",
     "modules.js"
   ],
   "repository": {
@@ -133,6 +134,7 @@
       "/demo/**/*.bundle.*",
       "/plugins.js",
       "/core.js",
+      "/react.js",
       "/modules.js"
     ],
     "parser": "@babel/eslint-parser",
@@ -297,7 +299,7 @@
   },
   "standard-version": {
     "scripts": {
-      "postbump": "yarn build && git add dist plugins.js core.js modules.js"
+      "postbump": "yarn build && git add dist plugins.js core.js react.js modules.js"
     }
   }
 }

@@ -45,7 +45,7 @@ const getSkipTimeOffset = ad => {
   const percentageOffset = (((_ad$skipOffset = ad.skipOffset) === null || _ad$skipOffset === void 0 ? void 0 : (_ad$skipOffset$match = _ad$skipOffset.match(/\d+/)) === null || _ad$skipOffset$match === void 0 ? void 0 : _ad$skipOffset$match[0]) || 0) / 100; // 00:01:07 -> 67
 
   const timeOffset = (((_ad$skipOffset2 = ad.skipOffset) === null || _ad$skipOffset2 === void 0 ? void 0 : _ad$skipOffset2.match(/(\d+):(\d+):(\d+)/)) || []).slice(1, 4).reduce((last, time) => last * 60 + +time, 0);
-  return ad.startTimeInSeconds + timeOffset + ad.durationInSeconds * percentageOffset;
+  return timeOffset + ad.durationInSeconds * percentageOffset;
 };
 
 const inRange = ({
@@ -276,7 +276,7 @@ class Impression {
         });
       }
 
-      if (!state.isSkippableEventFired && streamTime >= getSkipTimeOffset(currentAd)) {
+      if (!state.isSkippableEventFired && streamTime >= currentAd.startTimeInSeconds + getSkipTimeOffset(currentAd)) {
         state.isSkippableEventFired = true;
 
         this._common.onSkippableStateChanged({
@@ -471,7 +471,7 @@ const snapback = ({
 }) => {
   const cuePoint = streamManager === null || streamManager === void 0 ? void 0 : streamManager.previousCuePointForStreamTime(seekTime);
 
-  if ((cuePoint === null || cuePoint === void 0 ? void 0 : cuePoint.start) > originTime) {
+  if ((cuePoint === null || cuePoint === void 0 ? void 0 : cuePoint.start) >= originTime) {
     once$1(streamManager, 'adBreakEnded', async () => {
       // wait for ad playing flag to clear before resuming, TODO seek earlier
       await new Promise(resolve => setTimeout(resolve, 20));
@@ -479,7 +479,7 @@ const snapback = ({
     });
   }
 
-  seek((cuePoint === null || cuePoint === void 0 ? void 0 : cuePoint.start) > originTime ? cuePoint.start : seekTime);
+  seek((cuePoint === null || cuePoint === void 0 ? void 0 : cuePoint.start) >= originTime ? cuePoint.start : seekTime);
 };
 
 const addFetchPolyfill = () => {
@@ -806,7 +806,9 @@ const MediaTailorPlugin = ({
       streamManager.requestStream(mediaTailorOptions);
       const {
         url
-      } = await new Promise(resolve => once(streamManager, 'loaded', event => resolve(event.getStreamData())));
+      } = await new Promise(resolve => {
+        once(streamManager, 'loaded', event => resolve(event.getStreamData()));
+      });
 
       if (!url) {
         console.warn('Ad stream is not available, use fallback stream instead');
@@ -894,16 +896,31 @@ const ImaDaiPlugin = () => {
     ref.video = undefined;
   };
 
+  const getStartTime = startTime => {
+    var _earliestCuepoint$sta, _earliestCuepoint;
+
+    const startTimeInStreamTime = ref.streamManager.streamTimeForContentTime(startTime);
+    let earliestCuepoint = {
+      start: startTimeInStreamTime
+    }; // Find if there is a pre-roll ad. Note that we need to handle multiple mid-roll ads in phase 2.
+    // The possible solution is storing the cuepoints in a stack and pop it while finishing an ad.
+
+    while (earliestCuepoint !== null && earliestCuepoint.start !== 0) {
+      earliestCuepoint = ref.streamManager.previousCuePointForStreamTime(earliestCuepoint.start);
+    }
+
+    return (_earliestCuepoint$sta = (_earliestCuepoint = earliestCuepoint) === null || _earliestCuepoint === void 0 ? void 0 : _earliestCuepoint.start) !== null && _earliestCuepoint$sta !== void 0 ? _earliestCuepoint$sta : startTimeInStreamTime;
+  };
+
   return {
     isActive: () => !!ref.streamManager,
     load: async (manifestItem, {
       player,
       video,
-      adContainer,
       streamFormat,
-      source = {}
+      startTime
     }) => {
-      var _manifestItem$ssai, _source$options;
+      var _manifestItem$ssai;
 
       reset();
 
@@ -911,18 +928,25 @@ const ImaDaiPlugin = () => {
         return;
       }
 
+      ref.video = video;
       const {
         live: liveOptions,
         vod: vodOptions
       } = manifestItem.ssai.google_dai;
       const daiApi = await ensureDaiApi();
-      ref.streamManager = new daiApi.StreamManager(video, adContainer);
+
+      if (!ref.adContainer) {
+        // eslint-disable-next-line no-console
+        console.warn(`The 'adContainer' is '${ref.adContainer}'. Please provide it using 'ImaDai.setAdContainer', or the DAI SDK won't request skippable ADs. See: https://developers.google.com/interactive-media-ads/docs/sdks/html5/dai/reference/js/StreamManager#StreamManager`);
+      }
+
+      ref.streamManager = new daiApi.StreamManager(video, ref.adContainer);
       pipeEvents(ref.streamManager, emitter, ['skippableStateChanged']);
       /**
        * To align with the MideaTailor, convert the cuepoint.start from the stream time to content time.
        */
 
-      ref.streamManager.addEventListener('cuepointsChanged', event => {
+      ref.streamManager.addEventListener(daiApi.StreamEvent.Type.CUEPOINTS_CHANGED, event => {
         const cuepointsInContentTime = event.getStreamData().cuepoints.map(cuepoint => ({
           start: ref.streamManager.contentTimeForStreamTime(cuepoint.start)
         }));
@@ -970,11 +994,10 @@ const ImaDaiPlugin = () => {
       ref.streamManager.addEventListener(daiApi.StreamEvent.Type.AD_PROGRESS, e => {
         ref.progress = e.getStreamData().adProgressData;
       });
-      ref.video = video;
       return {
         ssaiProvider: 'DAI',
         url,
-        startTime: ref.streamManager.streamTimeForContentTime((_source$options = source.options) === null || _source$options === void 0 ? void 0 : _source$options.startTime)
+        startTime: getStartTime(startTime)
       };
     },
     getPlaybackStatus: () => ref.streamManager && ref.video && {
@@ -993,6 +1016,9 @@ const ImaDaiPlugin = () => {
         seekTime: ref.streamManager.streamTimeForContentTime(contentTime),
         seek
       });
+    },
+    setAdContainer: adContainer => {
+      ref.adContainer = adContainer;
     }
   };
 };

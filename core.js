@@ -1,4 +1,5 @@
 import UAParser from 'ua-parser-js';
+import 'axios';
 
 /* eslint-disable no-param-reassign */
 const loadNative = ({
@@ -35,6 +36,68 @@ function needNativeHls() {
   return isAndroid || /firefox/i.test(navigator.userAgent) ? '' : isSafari ? 'maybe' : canPlayHls;
 }
 
+/* eslint-disable indent */
+const FairplayKeySystem = {
+  prepareContentId: contentUri => {
+    const uriParts = contentUri.split('://');
+    const contentId = uriParts[1] || '';
+    return uriParts[0].slice(-3).toLowerCase() === 'skd' ? contentId : '';
+  },
+  prepareCertificate: cert => new Uint8Array(cert),
+  prepareMessage: (keyMessageEvent, keySession) => {
+    const spc = encodeURIComponent(keyMessageEvent.messageBase64Encoded);
+    const assetId = encodeURIComponent(keySession.contentId);
+    return `spc=${spc}&asset_id=${assetId}`;
+  },
+  prepareLicense: license => {
+    if (license.substr(0, 5) === '<ckc>' && license.substr(-6) === '</ckc>') {
+      return license.slice(5, -6);
+    }
+
+    return license;
+  }
+};
+
+const defaultCertificateUrl = url => `${url === null || url === void 0 ? void 0 : url.replace(/\/$/, '')}/fairplay_cert`;
+
+const getDrmConfig = ({
+  url,
+  headers,
+  widevine = {
+    level: undefined
+  },
+  fairplay = {
+    certificateURL: defaultCertificateUrl(url)
+  }
+}) => {
+  if (!url) {
+    return {};
+  }
+
+  return {
+    widevine: {
+      LA_URL: url,
+      withCredentials: false,
+      headers,
+      ...((widevine === null || widevine === void 0 ? void 0 : widevine.level) && {
+        videoRobustness: widevine === null || widevine === void 0 ? void 0 : widevine.level
+      })
+    },
+    fairplay: {
+      LA_URL: url,
+      withCredentials: false,
+      headers,
+      certificateURL: fairplay.certificateURL,
+      ...FairplayKeySystem
+    },
+    playready: {
+      LA_URL: url,
+      withCredentials: false,
+      headers
+    }
+  };
+};
+
 const loadBitmovin = async ({
   container,
   videoElement,
@@ -47,9 +110,10 @@ const loadBitmovin = async ({
     PlayerEvent
   } = await import('bitmovin-player/modules/bitmovinplayer-core');
   const nativeHls = needNativeHls();
-  const bitmovinModules = [].concat(await import('bitmovin-player/modules/bitmovinplayer-engine-bitmovin'), nativeHls && (await import('bitmovin-player/modules/bitmovinplayer-engine-native')), await Promise.all([import('bitmovin-player/modules/bitmovinplayer-drm'), import('bitmovin-player/modules/bitmovinplayer-abr'), import('bitmovin-player/modules/bitmovinplayer-subtitles'), import('bitmovin-player/modules/bitmovinplayer-container-mp4'), import('bitmovin-player/modules/bitmovinplayer-style')]), nativeHls && (await Promise.all([import('bitmovin-player/modules/bitmovinplayer-hls.js'), import('bitmovin-player/modules/bitmovinplayer-subtitles-native.js')])), !nativeHls && (await import('bitmovin-player/modules/bitmovinplayer-subtitles-vtt')), !nativeHls && (await import('bitmovin-player/modules/bitmovinplayer-xml')), !nativeHls && (await Promise.all([import('bitmovin-player/modules/bitmovinplayer-dash'), import('bitmovin-player/modules/bitmovinplayer-mserenderer'), import('bitmovin-player/modules/bitmovinplayer-polyfill')]))).filter(Boolean);
+  const bitmovinModules = [].concat(await import('bitmovin-player/modules/bitmovinplayer-engine-bitmovin'), nativeHls && (await import('bitmovin-player/modules/bitmovinplayer-engine-native')), await Promise.all([import('bitmovin-player/modules/bitmovinplayer-drm'), import('bitmovin-player/modules/bitmovinplayer-abr'), import('bitmovin-player/modules/bitmovinplayer-subtitles'), import('bitmovin-player/modules/bitmovinplayer-container-mp4')]), nativeHls && (await Promise.all([import('bitmovin-player/modules/bitmovinplayer-hls'), import('bitmovin-player/modules/bitmovinplayer-subtitles-native')])), !nativeHls && (await import('bitmovin-player/modules/bitmovinplayer-subtitles-vtt')), !nativeHls && (await import('bitmovin-player/modules/bitmovinplayer-xml')), !nativeHls && (await Promise.all([import('bitmovin-player/modules/bitmovinplayer-dash'), import('bitmovin-player/modules/bitmovinplayer-mserenderer'), import('bitmovin-player/modules/bitmovinplayer-polyfill')]))).filter(Boolean);
   bitmovinModules.forEach(module => Player.addModule(module.default));
-  const configs = {
+  let adaptationHandler;
+  const player = new Player(container, {
     tweaks: {
       native_hls_parsing: true
     },
@@ -57,10 +121,76 @@ const loadBitmovin = async ({
     ...config,
     playback: { ...config.playback,
       autoplay
+    },
+    adaptation: { ...config.adaptation,
+      onVideoAdaptation: data => {
+        var _adaptationHandler;
+
+        const availableQualities = player.getAvailableVideoQualities();
+        return ((_adaptationHandler = adaptationHandler) === null || _adaptationHandler === void 0 ? void 0 : _adaptationHandler({
+          availableQualities,
+          suggested: availableQualities.find(item => item.id === data.suggested) || {
+            id: data.suggested
+          }
+        })) || data.suggested;
+      }
+    }
+  });
+
+  player.setAdaptationHandler = handler => {
+    adaptationHandler = handler;
+  };
+
+  player.getDrmConfig = getDrmConfig; // Mock Shaka player interface from shaka.js
+
+  player.getSubtitles = () => {
+    var _player$subtitles;
+
+    return ((_player$subtitles = player.subtitles) === null || _player$subtitles === void 0 ? void 0 : _player$subtitles.list().map(track => ({
+      label: track.label,
+      value: track.lang,
+      enabled: track.enabled
+    }))) || [];
+  };
+
+  player.setSubtitleTrack = language => {
+    var _subtitles$list;
+
+    const {
+      subtitles
+    } = player;
+    subtitles === null || subtitles === void 0 ? void 0 : (_subtitles$list = subtitles.list) === null || _subtitles$list === void 0 ? void 0 : _subtitles$list.call(subtitles).forEach(track => {
+      // TODO consider multiple subtitles
+      subtitles[language === track.lang ? 'enable' : 'disable'](track.id); // Safari need to fire cueExit manually.
+
+      if (language === 'off') subtitles.cueExit();
+    });
+  };
+
+  player.getAudioList = () => player.getAvailableAudio();
+
+  player.setAudioTrack = language => {
+    const track = player.getAvailableAudio().find(audio => audio.lang === language);
+
+    if (track) {
+      player.setAudio(track.id);
     }
   };
-  const player = new Player(container, configs);
-  player.setVideoElement(videoElement);
+
+  player.setVideoElement(videoElement); // For a paused live stream, Bitmovin constantly download latest segments and update,
+  // and may unexpectedly resume playing when playing vod-to-live, so set speed 0 to prevent.
+  // #CPT-1783
+
+  player.on(PlayerEvent.Play, () => {
+    if (player.isLive()) {
+      player.setPlaybackSpeed(1);
+    }
+  });
+  player.on(PlayerEvent.Paused, () => {
+    if (player.isLive()) {
+      player.setPlaybackSpeed(0);
+    }
+  });
   player.on(PlayerEvent.SourceLoaded, () => {
     if (player.isLive()) {
       // eslint-disable-next-line no-param-reassign
@@ -69,15 +199,20 @@ const loadBitmovin = async ({
       videoElement.dispatchEvent(new Event('canplay'));
     }
   });
-  player.on(PlayerEvent.Error, data => {
+  player.on(PlayerEvent.Error, info => {
     var _window$Sentry;
 
-    const error = new Error(`Player: ${data.code}/${data.name}`);
-    console.error(error);
+    const error = new Error(`Player: ${info.code}/${info.name}`);
+    console.warn(info);
+
+    if (/The video element has thrown a media error|Video element triggered an Error/.test(info.message)) {
+      return;
+    }
+
     (_window$Sentry = window.Sentry) === null || _window$Sentry === void 0 ? void 0 : _window$Sentry.captureException(error);
-    videoElement.dispatchEvent(new ErrorEvent('PlayerError', {
-      error,
-      message: `Player Error: ${data.code}/${data.name}`
+    videoElement.dispatchEvent(Object.assign(new CustomEvent('error'), {
+      error: info,
+      message: `Player Error: ${info.code}/${info.name}`
     }));
   });
   player.on(PlayerEvent.StallStarted, () => videoElement.dispatchEvent(new Event('waiting')));
@@ -85,35 +220,163 @@ const loadBitmovin = async ({
 };
 
 /* eslint-disable no-param-reassign */
+
+const convertShakaDrm = ({
+  url
+}) => ({
+  servers: {
+    'com.widevine.alpha': url,
+    'com.microsoft.playready': url,
+    'com.apple.fps.1_0': url
+  },
+  advanced: {
+    'com.apple.fps.1_0': {
+      serverCertificateUri: defaultCertificateUrl(url)
+    }
+  }
+});
+
+const getQualityItem = track => ({
+  id: track.originalVideoId,
+  bitrate: track.videoBandwidth,
+  width: track.width,
+  height: track.height,
+  codec: track.videoCodec,
+  frameRate: track.frameRate
+});
+
 const loadShaka = async ({
   videoElement,
   config = {},
   extraConfig
 }) => {
-  let player;
+  const shaka = await import('shaka-player');
+  shaka.polyfill.installAll();
+  const player = new shaka.Player(videoElement);
+
+  const getAvailableVideoQualities = () => player.getVariantTracks().reduce((trackList, currentTrack) => {
+    const keepOrignalTrack = trackList.find(track => track.height === currentTrack.height);
+
+    if (!keepOrignalTrack) {
+      trackList.push(getQualityItem(currentTrack));
+    }
+
+    return trackList;
+  }, []);
+
+  const getVideoQuality = () => {
+    const activeTrack = player.getVariantTracks().find(track => track.active);
+    if (!activeTrack) return {};
+    return getQualityItem(activeTrack);
+  };
+
   return {
     load: async ({
       dash,
-      hls
+      hls,
+      drm
     }) => {
-      const shaka = await import('shaka-player');
-      player = new shaka.Player(videoElement);
-      player.configure(config);
+      player.configure({ ...config,
+        drm: convertShakaDrm(drm),
+        streaming: {
+          useNativeHlsOnSafari: true
+        }
+      });
+      player.getNetworkingEngine().registerRequestFilter((type, request) => {
+        if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
+          request.headers = { ...request.headers,
+            ...drm.headers
+          };
+        }
+      });
+      /*
+        In iOS Safari, native `canplay` would not be fired and keep loading forever.
+        We need to fire `canplay` manually by shaka event, loaded.
+      */
+
+      player.addEventListener('loaded', () => {
+        videoElement.dispatchEvent(new Event('canplay'));
+      });
       videoElement.autoplay = extraConfig.autoplay;
 
       if (!videoElement.autoplay) {
         videoElement.muted = false;
       }
 
-      const assetUri = dash || hls;
+      const assetUri = needNativeHls() ? hls : dash;
       player.load(assetUri);
     },
     play: () => videoElement.play(),
+    pause: () => videoElement.pause(),
     seek: time => {
       videoElement.currentTime = time;
     },
-    isLive: () => player.isLive(),
-    destroy: () => player.destroy()
+    isLive: () => player === null || player === void 0 ? void 0 : player.isLive(),
+    destroy: () => player === null || player === void 0 ? void 0 : player.destroy(),
+    getCurrentTime: () => videoElement.currentTime,
+    getDuration: () => videoElement.duration,
+    getViewMode: () => 'fullscreen',
+    getStreamType: () => 'dash',
+    getVideoBufferLength: () => player.getBufferedInfo().video,
+    getAudioBufferLength: () => player.getBufferedInfo().audio,
+    setVolume: volume => {
+      videoElement.volume = volume / 100;
+    },
+    unmute: () => {
+      videoElement.muted = false;
+    },
+    mute: () => {
+      videoElement.muted = true;
+    },
+    setPlaybackSpeed: rate => {
+      videoElement.playbackRate = rate;
+    },
+    hasEnded: () => videoElement.ended,
+    // TODO
+    getSource: () => null,
+    // TODO: implement this function
+    getSupportedTech: () => [{
+      player: 'html5',
+      streaming: 'dash'
+    }],
+    getPlaybackSpeed: () => videoElement.playbackRate,
+    getVideoElement: () => videoElement,
+    setQuality: restrictions => {
+      if (!restrictions) return;
+      player.configure('restrictions', restrictions);
+    },
+    getVideoQuality,
+    getAvailableVideoQualities,
+    getSubtitles: () => player.getTextTracks().map(track => ({
+      label: track.label,
+      value: track.language,
+      enabled: track.active
+    })),
+    setSubtitleTrack: lang => {
+      if (lang === 'off') {
+        player === null || player === void 0 ? void 0 : player.setTextTrackVisibility(false);
+        return;
+      }
+
+      player === null || player === void 0 ? void 0 : player.selectTextLanguage(lang);
+      player === null || player === void 0 ? void 0 : player.setTextTrackVisibility(true);
+    },
+    getAudio: () => {
+      const active = player === null || player === void 0 ? void 0 : player.getVariantTracks().find(track => track.active);
+      return {
+        lang: active === null || active === void 0 ? void 0 : active.language,
+        label: active === null || active === void 0 ? void 0 : active.label
+      };
+    },
+    getAudioList: () => player.getVariantTracks().map(track => ({
+      lang: track.language,
+      label: track.label
+    })),
+    setAudioTrack: lang => {
+      if (!lang) return;
+      player === null || player === void 0 ? void 0 : player.selectAudioLanguage(lang);
+    },
+    unload: () => player.unload()
   };
 };
 
@@ -139,6 +402,7 @@ const loadPlayer = async (videoElement, {
         autoplay
       }
     });
+    videoElement.dispatchEvent(new CustomEvent('playerStarted'));
     return player;
   }
 
@@ -149,14 +413,10 @@ const loadPlayer = async (videoElement, {
       autoplay,
       config: bitmovin
     });
+    videoElement.dispatchEvent(new CustomEvent('playerStarted'));
     return player;
   } // TODO load other players: dash.js, hls.js
 
-};
-
-const on = (target, name, handler) => {
-  target.addEventListener(name, handler);
-  return () => target.removeEventListener(name, handler);
 };
 
 const once = (target, name, handler) => {
@@ -171,94 +431,39 @@ const once = (target, name, handler) => {
 
 /* eslint-disable no-param-reassign */
 
-const getMediaElementState = (media, plugins) => {
-  const overrides = plugins.map(plugin => {
-    var _plugin$getPlaybackSt;
 
-    return (_plugin$getPlaybackSt = plugin.getPlaybackStatus) === null || _plugin$getPlaybackSt === void 0 ? void 0 : _plugin$getPlaybackSt.call(plugin);
-  });
-  return Object.assign({
-    paused: media.paused,
-    ended: media.ended,
+const SHAKA_LIVE_DURATION = 4294967296;
+
+const isFinite = duration => duration < SHAKA_LIVE_DURATION;
+
+const getMediaTime = (media, plugins = []) => {
+  const {
+    duration,
+    ...data
+  } = Object.assign({
     currentTime: media.currentTime,
-    duration: media.duration
-  }, ...overrides);
+    bufferTime: Math.max(...Array.from({
+      length: media.buffered.length
+    }, (_, index) => media.buffered.end(index))),
+    duration: media.initialDuration // monkey patched, duration may change for DASH playback
+
+  }, ...plugins.map(plugin => {
+    var _plugin$getPlaybackSt2;
+
+    return (_plugin$getPlaybackSt2 = plugin.getPlaybackStatus) === null || _plugin$getPlaybackSt2 === void 0 ? void 0 : _plugin$getPlaybackSt2.call(plugin);
+  }));
+  return { ...data,
+    ...((!isFinite(media.initialDuration) || Math.abs(media.duration - media.initialDuration) < 0.1) && {
+      duration
+    })
+  };
 };
-
-const subscribeMediaState = (media, updateState, plugins = []) => {
-  let state = {
-    playbackState: 'init',
-    waiting: false,
-    ...getMediaElementState(media, plugins)
-  };
-
-  const syncState = update => {
-    const videoElementState = getMediaElementState(media, plugins); // when playing SSAI stream,
-    // sometimes duration changes to wrong value when playing an ad
-
-    const overrides = state.duration > 0 ? {
-      duration: state.duration
-    } : {};
-    state = { ...state,
-      ...videoElementState,
-      ...overrides,
-      ...update
-    }; // TODO consider shallow equal?
-
-    updateState(state);
-  };
-
-  const registered = [on(media, 'error', () => syncState({
-    playbackState: 'error',
-    waiting: false
-  })), on(media, 'waiting', () => syncState({
-    waiting: true
-  })), on(media, 'stalled', () => {
-    // Safari fires stalled events randomly.
-    // Maybe we could ignore this event in paused state.
-    if (media.paused) {
-      return;
-    }
-
-    syncState({
-      waiting: true
-    });
-  }), on(media, 'loadstart', () => syncState({
-    seekEnabled: false,
-    duration: 0,
-    playbackState: 'loading',
-    waiting: true
-  })), on(media, 'canplay', () => syncState({
-    playbackState: 'canplay',
-    waiting: false
-  })), on(media, 'play', syncState, syncState({
-    paused: false
-  })), on(media, 'pause', () => syncState({
-    playbackState: 'paused',
-    waiting: false
-  })), on(media, 'seeking', () => syncState({
-    waiting: true
-  })), on(media, 'seeked', () => syncState({
-    waiting: false
-  })), on(media, 'timeupdate', () => syncState(!media.paused && {
-    playbackState: 'playing',
-    waiting: false
-  })), on(media, 'ended', () => syncState({
-    playbackState: 'ended'
-  })), on(media, 'durationchange', () => {
-    syncState({
-      seekEnabled: Number.isFinite(media.duration)
-    });
-  })];
-  syncState();
-  return () => registered.forEach(off => off());
-}; // TODO maybe adContainer is too specific for core, we should find a better place for it
-
 
 const load = async (media, {
   player,
-  plugins = [],
-  adContainer
+  drm,
+  startTime,
+  plugins = []
 }, source) => {
   var _player$getSupportedT;
 
@@ -267,49 +472,49 @@ const load = async (media, {
     var _plugin$load;
 
     const currentSource = await loadChain;
-    const manifestItem = currentSource.manifests[streamFormat];
+    const manifestItem = currentSource.info[streamFormat];
     const overrides = await ((_plugin$load = plugin.load) === null || _plugin$load === void 0 ? void 0 : _plugin$load.call(plugin, manifestItem, {
       video: media,
       player,
-      adContainer,
       source: currentSource,
-      streamFormat
+      streamFormat,
+      startTime
     }));
+    return overrides ? { ...currentSource,
+      [streamFormat]: overrides.url,
+      ...(typeof overrides.startTime === 'number' && {
+        startTime: overrides.startTime
+      })
+    } : currentSource;
+  }, { ...source,
+    startTime
+  });
+  media.addEventListener('durationchange', () => {
+    // media duration may change when playing VOD to live or SSAI streams, save it here for convenience
+    media.initialDuration = media.duration;
+  }, {
+    once: true
+  });
+  const {
+    startTime: loadStartTime,
+    ...config
+  } = merged;
+  return player.unload().then(() => {
+    var _player$getDrmConfig;
 
-    if (overrides) {
-      const {
-        url,
-        startTime
-      } = overrides;
-      return { ...currentSource,
-        [streamFormat]: url,
-        ...(startTime && {
-          options: { ...currentSource.options,
-            startTime
-          }
-        })
-      };
-    }
-
-    return currentSource;
-  }, source);
-  return player.load(merged);
-};
-
-const playOrPause = (media, {
-  player
-}) => {
-  if (media.ended) {
-    player.seek(0);
-  }
-
-  if (media.paused) {
-    // can't handle this at all, and safe to ignore
-    media.play().catch(error => console.warn(error));
-    return player.play().catch(error => console.warn(error));
-  }
-
-  return media.pause();
+    return (// TODO drm is Bitmovin form, but should be agnostic
+      player.load({ ...config,
+        drm: ((_player$getDrmConfig = player.getDrmConfig) === null || _player$getDrmConfig === void 0 ? void 0 : _player$getDrmConfig.call(player, drm)) || drm,
+        options: {
+          startTime: loadStartTime
+        }
+      })
+    );
+  }).catch(error => {
+    media.dispatchEvent(Object.assign(new CustomEvent('error'), {
+      error
+    }));
+  });
 };
 
 const seek = (media, {
@@ -341,4 +546,4 @@ const seek = (media, {
   }
 };
 
-export { load, loadPlayer, playOrPause, seek, subscribeMediaState };
+export { getMediaTime, load, loadPlayer, seek };
