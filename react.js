@@ -1,10 +1,10 @@
 import React, {
-  useContext,
-  createContext,
   useState,
-  useEffect,
   useRef,
+  useEffect,
+  useContext,
   cloneElement,
+  createContext,
   useReducer,
   useLayoutEffect,
   forwardRef,
@@ -12,190 +12,261 @@ import React, {
   useImperativeHandle,
   Fragment as Fragment$2,
 } from 'react'
-import require$$0 from 'react-is'
-import axios from 'axios'
-import UAParser from 'ua-parser-js'
-import {createPortal} from 'react-dom'
-import {jsx, jsxs as jsxs$1, Fragment as Fragment$1} from 'react/jsx-runtime'
-import {jsx as jsx$1, jsxs, Fragment} from '@emotion/react/jsx-runtime'
-import mitt from 'mitt'
-import {css, ClassNames, keyframes} from '@emotion/react'
 import useDimensions from 'react-cool-dimensions'
 import {ResizeObserver} from '@juggle/resize-observer'
+import UAParser from 'ua-parser-js'
+import require$$0 from 'react-is'
+import {jsx, jsxs as jsxs$1, Fragment as Fragment$1} from 'react/jsx-runtime'
+import axios from 'axios'
+import {css, ClassNames, keyframes} from '@emotion/react'
+import {jsx as jsx$1, jsxs, Fragment} from '@emotion/react/jsx-runtime'
+import {createPortal} from 'react-dom'
 import useOnclickOutside from 'react-cool-onclickoutside'
+import mitt from 'mitt'
 import classnames from 'classnames'
 import _get from 'dlv'
 
-var logs = {
-  bitmovin: false,
-  level: 'error',
+const LanguageCode$1 = {
+  EN: 'en',
+  JA: 'ja',
+  ZHTW: 'zh-TW',
 }
-var style$9 = {
-  width: '100%',
-  height: '100%',
+const SeekOrigin = {
+  START: 'START',
+  CURRENT: 'CURRENT',
 }
-var ui = false
-var BitmovinConfig = {
-  logs: logs,
-  style: style$9,
-  ui: ui,
+const CastState = {
+  NO_DEVICES_AVAILABLE: 'NO_DEVICES_AVAILABLE',
+  CONNECTED: 'CONNECTED',
+  CONNECTING: 'CONNECTING',
+  NOT_CONNECTED: 'NOT_CONNECTED',
+}
+const ItemType$1 = {
+  VIDEOS: 'videos',
+  LIVES: 'lives',
 }
 
-var desktop = [
-  {
-    device: {
-      type: 'desktop',
-    },
-    os: {
-      name: '*',
-      version: '*',
-    },
-    browser: {
-      name: 'Chrome',
-      version: '60',
-    },
-  },
-  {
-    device: {
-      type: 'desktop',
-    },
-    os: {
-      name: '*',
-      version: '*',
-    },
-    browser: {
-      name: 'Safari',
-      version: '11',
-    },
-  },
-  {
-    device: {
-      type: 'desktop',
-    },
-    os: {
-      name: '*',
-      version: '*',
-    },
-    browser: {
-      name: 'Firefox',
-      version: '60',
-    },
-  },
-  {
-    device: {
-      type: 'desktop',
-    },
-    os: {
-      name: '*',
-      version: '*',
-    },
-    browser: {
-      name: 'Edge',
-      version: '15',
-    },
-  },
-  {
-    device: {
-      type: 'desktop',
-    },
-    os: {
-      name: 'Windows',
-      version: '8.1',
-    },
-    browser: {
-      name: 'IE',
-      version: '11',
-    },
-  },
-]
+/* eslint-disable no-plusplus */
+const parser = new UAParser()
+function getOS() {
+  return parser.getOS()
+}
+function getDevice() {
+  const device = parser.getDevice()
+  const osName = getOS().name
+  if (device.type === undefined && osName === 'Android') device.type = 'tablet'
+  return device
+}
+function needNativeHls() {
+  // Don't let Android phones play HLS, even if some of them report supported
+  // This covers Samsung & OPPO special cases
+  const isAndroid = /android/i.test(navigator.userAgent) // canPlayType isn't reliable across all iOS verion / device combinations, so also check user agent
 
-var mobile = [
-  {
-    device: {
-      type: 'mobile',
-    },
-    os: {
-      name: 'Android',
-      version: '5',
-    },
-    browser: {
-      name: 'Chrome',
-      version: '60',
-    },
-  },
-  {
-    device: {
-      type: 'mobile',
-    },
-    os: {
-      name: 'Android',
-      version: '5',
-    },
-    browser: {
-      name: 'Chrome WebView',
-      version: '60',
-    },
-  },
-  {
-    device: {
-      type: 'mobile',
-    },
-    os: {
-      name: 'iOS',
-      version: '11',
-    },
-    browser: {
-      name: 'Mobile Safari',
-      version: '11',
-    },
-  },
-  {
-    device: {
-      type: 'tablet',
-    },
-    os: {
-      name: 'Android',
-      version: '5',
-    },
-    browser: {
-      name: 'Chrome',
-      version: '60',
-    },
-  },
-  {
-    device: {
-      type: 'tablet',
-    },
-    os: {
-      name: 'Android',
-      version: '5',
-    },
-    browser: {
-      name: 'Chrome WebView',
-      version: '60',
-    },
-  },
-  {
-    device: {
-      type: 'tablet',
-    },
-    os: {
-      name: 'iOS',
-      version: '11',
-    },
-    browser: {
-      name: 'Mobile Safari',
-      version: '11',
-    },
-  },
-]
+  const isSafari = /^((?!chrome|android).)*(safari|iPad|iPhone)/i.test(
+    navigator.userAgent
+  ) // ref: https://stackoverflow.com/a/12905122/4578017
+  // none of our supported browsers other than Safari response to this
 
-var config = {
-  BitmovinConfig,
-  SupportEnvironment: {
-    desktop,
-    mobile,
-  },
+  const canPlayHls = document
+    .createElement('video')
+    .canPlayType('application/vnd.apple.mpegURL')
+  return isAndroid || /firefox/i.test(navigator.userAgent)
+    ? ''
+    : isSafari
+    ? 'maybe'
+    : canPlayHls
+}
+
+const isDesktop = () => !getDevice().type
+
+const isIOS = () =>
+  /iPad|iPhone|iPod/.test(navigator.platform) ||
+  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
+
+const havePointerQuery =
+  'not all and (pointer: coarse), screen and (-ms-high-contrast: active), (-ms-high-contrast: none)'
+
+const multiRef =
+  (...refs) =>
+  element => {
+    if (element) {
+      refs.forEach(ref => {
+        if (ref && 'current' in ref) {
+          // eslint-disable-next-line no-param-reassign
+          ref.current = element
+        } else {
+          ref === null || ref === void 0 ? void 0 : ref(element)
+        }
+      })
+    }
+  }
+
+const on = (target, name, handler) => {
+  target.addEventListener(name, handler)
+  return () => target.removeEventListener(name, handler)
+}
+
+const once = (target, name, handler) => {
+  const oneTime = (...args) => {
+    handler(...args)
+    target.removeEventListener(name, oneTime)
+  }
+
+  target.addEventListener(name, oneTime)
+  return () => target.removeEventListener(name, oneTime)
+}
+
+const waitFor = (check, handler) => {
+  const checkInterval = setInterval(() => {
+    if (check()) {
+      clearInterval(check)
+      handler()
+    }
+  }, 50)
+  return () => clearInterval(checkInterval)
+}
+
+const vendors = {
+  change: ['fullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'],
+  element: [
+    'fullscreenElement',
+    'webkitFullscreenElement',
+    'msFullscreenElement',
+  ],
+  request: [
+    'requestFullscreen',
+    'webkitRequestFullScreen',
+    'msRequestFullscreen',
+  ],
+  exit: ['exitFullscreen', 'webkitExitFullscreen', 'msExitFullscreen'],
+}
+
+const getName = (object, nameList) => nameList.find(name => name in object)
+
+const onViewModeChange = (video, onChange) => {
+  const vendorElementName = getName(document, vendors.element)
+
+  if (vendorElementName) {
+    onChange(document[vendorElementName] ? 'fullscreen' : 'inline')
+    return vendors.change.map(name =>
+      on(document, name, () =>
+        onChange(document[vendorElementName] ? 'fullscreen' : 'inline')
+      )
+    )
+  }
+
+  onChange(video.webkitDisplayingFullscreen ? 'fullscreen' : 'inline')
+  const registered = [
+    on(video, 'webkitbeginfullscreen', () => onChange('fullscreen')),
+    on(video, 'webkitendfullscreen', () => onChange('inline')),
+  ]
+  return () => {
+    registered.forEach(removeListener => removeListener())
+  }
+}
+
+const toggleFullscreen = container => {
+  const vendorElementName = getName(document, vendors.element)
+
+  if (vendorElementName) {
+    const action = document[vendorElementName] ? 'exit' : 'request'
+    const target = action === 'request' ? container : document
+    return target[getName(target, vendors[action])]()
+  }
+
+  const target = container.querySelector('video')
+  return target.webkitDisplayingFullscreen
+    ? target.webkitExitFullScreen()
+    : target.webkitEnterFullScreen()
+}
+
+/*
+  Rules:
+    1  Set `true` immediately in first time (For loadstart event)
+    2. Set `true` to waiting lazily but update waiting to `false` immediately
+*/
+
+const useLazyWaiting = waiting => {
+  const [first, setFirst] = useState(true)
+  const [state, dispatch] = useState(waiting)
+  const timer = useRef()
+  useEffect(() => {
+    clearTimeout(timer.current)
+
+    if (waiting && !first) {
+      timer.current = setTimeout(() => {
+        dispatch(waiting)
+      }, 1000)
+    } else {
+      dispatch(waiting)
+      setFirst(false)
+    }
+
+    return () => clearTimeout(timer.current)
+  }, [waiting])
+  return state
+}
+
+const useAutoHide = ({hideTimeMs = 3000, pinned, tapToHide, onHide} = {}) => {
+  const timer = useRef()
+  const [mode, setMode] = useState('hidden')
+
+  const interact = () => {
+    if (mode !== 'shown') {
+      setMode('shown')
+    }
+
+    clearTimeout(timer.current)
+
+    if (!pinned) {
+      timer.current = setTimeout(() => setMode('hidden'), hideTimeMs)
+    }
+  }
+
+  const hide = () => {
+    clearTimeout(timer.current)
+    setMode('hidden')
+    onHide === null || onHide === void 0 ? void 0 : onHide()
+  }
+
+  useEffect(() => {
+    if (mode === 'shown') {
+      interact()
+    }
+  }, [hideTimeMs])
+  useEffect(() => {
+    if (pinned) {
+      setMode('shown')
+      clearTimeout(timer.current)
+    } else {
+      interact()
+    }
+  }, [pinned])
+  useEffect(
+    () => () => {
+      clearTimeout(timer.current)
+    },
+    []
+  )
+  return {
+    mode,
+    show: interact,
+    hide,
+    onClick: event => {
+      if (mode === 'hidden') {
+        interact()
+      } else if (tapToHide && event.target.tagName !== 'BUTTON') {
+        // hide if tapping on elsewhere
+        hide()
+      }
+    },
+    onMouseMove: () => {
+      // In mobile web, emulated clicks generate extra mouse move events
+      if (!('ontouchstart' in window)) {
+        interact()
+      }
+    },
+  }
 }
 
 var propTypes = {exports: {}}
@@ -1343,548 +1414,6 @@ if (process.env.NODE_ENV !== 'production') {
 
 var PropTypes = propTypes.exports
 
-const queryString = object =>
-  object &&
-  typeof object === 'object' &&
-  Object.getOwnPropertyNames(object)
-    .map(name => `${name}=${encodeURIComponent(object[name])}`)
-    .join('&')
-function convertToSeconds(timeString) {
-  const [hours, minutes, seconds] = timeString.split(':').map(parseFloat)
-  return hours * 3600 + minutes * 60 + seconds
-}
-function getVersion() {
-  try {
-    // eslint-disable-next-line no-undef
-    return '1.9.0-rc.6'
-  } catch (e) {
-    return undefined
-  }
-}
-function getPopoverPosition(rect, target, boundary) {
-  const rectX = rect.x || rect.left
-  const boundaryX = boundary.x || boundary.left
-  const maxLeft = boundary.width - rect.width
-  const targetCenter = (target.left + target.right) / 2 - boundaryX
-  const center = rectX + rect.width / 2 - boundaryX
-  const alignLeft = rectX + (targetCenter - center) - boundaryX
-  return {
-    left: Math.max(0, Math.min(alignLeft, maxLeft)),
-    top: target.top - rect.height,
-  }
-} // eslint-disable-next-line consistent-return
-
-const nearest = (items, diff) => {
-  if (!items.length) {
-    return
-  }
-
-  return items.reduce(
-    (a, b) => (Math.abs(diff(a)) > Math.abs(diff(b)) ? b : a),
-    items[0]
-  )
-}
-
-const LanguageCode$1 = {
-  EN: 'en',
-  JA: 'ja',
-  ZHTW: 'zh-TW',
-}
-const EnvironmentErrorName = {
-  NOT_SUPPORT_DEVICE: 'KKS.ERROR.DEVICE_IS_NOT_SUPPORTED',
-  NOT_SUPPORT_OS: 'KKS.ERROR.OS_IS_NOT_SUPPORTED',
-  NOT_SUPPORT_OS_VERSION: 'KKS.ERROR.PLEASE_UPGRADE_OS',
-  NOT_SUPPORT_BROWSER: 'KKS.ERROR.BROWSER_IS_NOT_SUPPORTED',
-  NOT_SUPPORT_BROWSER_VERSION: 'KKS.ERROR.PLEASE_UPGRADE_BROWSER',
-}
-const SeekOrigin = {
-  START: 'START',
-  CURRENT: 'CURRENT',
-}
-const CastState = {
-  NO_DEVICES_AVAILABLE: 'NO_DEVICES_AVAILABLE',
-  CONNECTED: 'CONNECTED',
-  CONNECTING: 'CONNECTING',
-  NOT_CONNECTED: 'NOT_CONNECTED',
-}
-const ItemType$1 = {
-  VIDEOS: 'videos',
-  LIVES: 'lives',
-}
-
-/* eslint-disable no-plusplus */
-const parser = new UAParser()
-function getOS() {
-  return parser.getOS()
-}
-function getDevice() {
-  const device = parser.getDevice()
-  const osName = getOS().name
-  if (device.type === undefined && osName === 'Android') device.type = 'tablet'
-  return device
-}
-function getBrowser() {
-  return parser.getBrowser()
-}
-function needNativeHls() {
-  // Don't let Android phones play HLS, even if some of them report supported
-  // This covers Samsung & OPPO special cases
-  const isAndroid = /android/i.test(navigator.userAgent) // canPlayType isn't reliable across all iOS verion / device combinations, so also check user agent
-
-  const isSafari = /^((?!chrome|android).)*(safari|iPad|iPhone)/i.test(
-    navigator.userAgent
-  ) // ref: https://stackoverflow.com/a/12905122/4578017
-  // none of our supported browsers other than Safari response to this
-
-  const canPlayHls = document
-    .createElement('video')
-    .canPlayType('application/vnd.apple.mpegURL')
-  return isAndroid || /firefox/i.test(navigator.userAgent)
-    ? ''
-    : isSafari
-    ? 'maybe'
-    : canPlayHls
-}
-
-const isDesktop = () => !getDevice().type
-
-const isIOS = () =>
-  /iPad|iPhone|iPod/.test(navigator.platform) ||
-  (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
-
-function compareVersion(v1, v2) {
-  if (!/\d+(\.\d+)*/.test(v1)) throw Error(`the version format ${v1} is wrong`)
-  if (!/\d+(\.\d+)*/.test(v2)) throw Error(`the version format ${v2} is wrong`)
-  const v1parts = v1.split('.').map(p => Number(p))
-  const v2parts = v2.split('.').map(p => Number(p))
-
-  for (let i = 0, I = Math.max(v1parts.length, v2parts.length); i < I; i++) {
-    if (v1parts[i] !== v2parts[i]) {
-      return (v1parts[i] || 0) - (v2parts[i] || 0)
-    }
-  }
-
-  return 0
-}
-
-const validateEnvironment = (supportEnvironmentList = []) => {
-  if (supportEnvironmentList.length === 0) {
-    return
-  }
-
-  const device = getDevice()
-  const os = getOS()
-  const browser = getBrowser()
-
-  const toUnique = list => Array.from(new Set(list))
-
-  const validators = [
-    {
-      filter: ({device: {name, type}}) =>
-        name === '*' ||
-        (type === 'desktop' && device.type === undefined) ||
-        type === device.type,
-      errorName: EnvironmentErrorName.NOT_SUPPORT_DEVICE,
-      getErrorProps: list => ({
-        allowDevices: toUnique(list.map(env => env.device.type)),
-      }),
-    },
-    {
-      filter: ({os: {name}}) => name === '*' || name === os.name,
-      errorName: EnvironmentErrorName.NOT_SUPPORT_OS,
-      getErrorProps: list => ({
-        allowOSs: toUnique(list.map(env => env.os.name)),
-      }),
-    },
-    {
-      filter: ({os: {version}}) =>
-        version === '*' || compareVersion(os.version, version) >= 0,
-      errorName: EnvironmentErrorName.NOT_SUPPORT_OS_VERSION,
-      getErrorProps: list => ({
-        minVersion: list[0].os.version,
-      }),
-    },
-    {
-      filter: ({browser: {name}}) => name === browser.name,
-      errorName: EnvironmentErrorName.NOT_SUPPORT_BROWSER,
-      getErrorProps: list => ({
-        allowBrowsers: toUnique(list.map(env => env.browser.name)),
-      }),
-    },
-    {
-      filter: ({browser: {version}}) =>
-        compareVersion(browser.version, version) >= 0,
-      errorName: EnvironmentErrorName.NOT_SUPPORT_BROWSER_VERSION,
-      getErrorProps: list => ({
-        minVersion: list[0].browser.version,
-      }),
-    },
-  ]
-  let scopes = supportEnvironmentList
-
-  for (let i = 0; i < validators.length; i++) {
-    const validator = validators[i]
-    const newScopes = scopes.filter(validator.filter)
-
-    if (newScopes.length === 0) {
-      return {
-        name: validator.errorName,
-        ...validator.getErrorProps(scopes),
-      }
-    }
-
-    scopes = newScopes
-  }
-} // IE doesn't support pointer query, assume it always have pointer
-
-const havePointerQuery =
-  'not all and (pointer: coarse), screen and (-ms-high-contrast: active), (-ms-high-contrast: none)'
-
-const matchAll = (input, pattern) => {
-  const flags = [
-    pattern.global && 'g',
-    pattern.ignoreCase && 'i',
-    pattern.multiline && 'm',
-  ]
-    .filter(Boolean)
-    .join('')
-  const clone = new RegExp(pattern, flags)
-  return Array.from(
-    (function* () {
-      let matched = true
-
-      while (1) {
-        matched = clone.exec(input)
-
-        if (!matched) {
-          return
-        }
-
-        yield matched
-      }
-    })()
-  )
-}
-
-const rewriteUrls = (manifest, sourceUrl) =>
-  manifest.replace(
-    /((#EXT-X-MEDIA:.*URI=")([^"]*))|((#EXT-X-STREAM-INF.*\n)(.*)(?=\n))/g,
-    (...matches) =>
-      [matches[2], matches[5], new URL(matches[3] || matches[6], sourceUrl)]
-        .filter(Boolean)
-        .join('')
-  )
-
-const filterHlsManifestQualities = (manifest, filter) => {
-  if (!filter) {
-    return
-  }
-
-  const profiles = matchAll(manifest, /RESOLUTION=(\d+)x(\d+)/g).map(
-    ([, width, height]) => ({
-      width: +width,
-      height: +height,
-    })
-  )
-  const allowed = filter(profiles) || profiles
-  const newManifest = manifest.replace(
-    /#EXT-X-STREAM-INF.*RESOLUTION=(\d+)x(\d+).*\n.*\n/g,
-    (item, width, height) =>
-      allowed.some(p => p.width === +width && p.height === +height) ? item : ''
-  )
-  return newManifest !== manifest && newManifest
-}
-
-const meetRestriction = (quality, {minHeight, maxHeight} = {}) =>
-  !(quality.height < minHeight || quality.height > maxHeight)
-
-const selectHlsQualities = async (source, restrictions) => {
-  if (
-    !needNativeHls() ||
-    !(source !== null && source !== void 0 && source.hls)
-  ) {
-    return source
-  }
-
-  const filtered = filterHlsManifestQualities(
-    (await axios.get(source.hls)).data,
-    items => items.filter(item => meetRestriction(item, restrictions))
-  )
-
-  if (filtered) {
-    const newManifest = new Blob([rewriteUrls(filtered, source.hls)], {
-      type: 'application/x-mpegURL',
-    })
-    return {...source, hls: URL.createObjectURL(newManifest)}
-  }
-
-  return source
-}
-
-const selectRestrictedQuality = (
-  availableQualities,
-  {suggested, restrictions}
-) => {
-  if (meetRestriction(suggested, restrictions)) {
-    return suggested.id
-  }
-
-  const allowed = availableQualities.filter(quality =>
-    meetRestriction(quality, restrictions)
-  )
-  return (nearest(allowed, item => item.height - suggested.height) || suggested)
-    .id
-}
-// for unit test
-
-let lastError = ''
-const defaultOptions = {
-  ignoreErrors: [
-    'AbortError: The play() request was interrupted',
-    'i.context.logger',
-  ],
-  beforeSend: event => {
-    if (
-      lastError.message === event.exception.values[0].value &&
-      Date.now() - lastError.date < 10000
-    ) {
-      lastError.date = Date.now()
-      return null
-    }
-
-    lastError = {
-      date: Date.now(),
-      message: event.exception.values[0].value,
-    }
-    return event
-  },
-}
-
-const addSentry = ({key, ...options}) => {
-  const script = document.createElement('script')
-  script.crossorigin = 'anonymous'
-  script.src = `https://js.sentry-cdn.com/${key}.min.js`
-  script.addEventListener(
-    'load',
-    () => {
-      window.Sentry.onLoad(() => {
-        window.Sentry.init({...defaultOptions, ...options})
-      })
-    },
-    {
-      once: true,
-    }
-  )
-  document.body.append(script)
-}
-
-/* eslint-disable react/prop-types */
-const extensionContext = /*#__PURE__*/ createContext()
-
-const SlotProvider = ({slotRef, children}) => {
-  const [slots, setSlots] = useState()
-  useEffect(() => {
-    setSlots(slotRef.current)
-  }, [])
-  return /*#__PURE__*/ jsx(extensionContext.Provider, {
-    value: slots,
-    children: children,
-  })
-}
-
-const FunctionBarExtension = ({children}) => {
-  const slots = useContext(extensionContext)
-  return slots !== null && slots !== void 0 && slots.functionBar
-    ? /*#__PURE__*/ createPortal(children, slots.functionBar)
-    : ''
-}
-
-/* eslint-disable jsx-a11y/no-static-element-interactions */
-
-/* @jsxImportSource @emotion/react */
-const backdropStyle = {
-  position: 'absolute',
-  zIndex: 1,
-  top: 0,
-  left: 0,
-  display: 'flex',
-  flexWrap: 'wrap',
-  alignItems: 'center',
-  alignContent: 'center',
-  justifyContent: 'center',
-  height: '100%',
-  width: '100%',
-  backgroundColor: 'rgba(0, 0, 0, 0)',
-  transform: 'translateY(-100%)',
-  transition: 'background-color 0.5s ease, transform 0s 0.5s',
-}
-const backdropOpenStyle = {
-  backgroundColor: 'rgba(0, 0, 0, 0.6)',
-  transform: 'translateY(0)',
-  transition: 'background-color 0.5s ease',
-  '~ .overlay-backdrop': {
-    display: 'none',
-  },
-} // eslint-disable-next-line react/prop-types
-
-const Backdrop = ({open, children, onClick, ...rest}) =>
-  jsx$1('div', {
-    css: [
-      backdropStyle,
-      open && backdropOpenStyle,
-      process.env.NODE_ENV === 'production' ? '' : ';label:Backdrop;',
-      process.env.NODE_ENV === 'production'
-        ? ''
-        : '/*# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIkJhY2tkcm9wLmpzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBQWdDSSIsImZpbGUiOiJCYWNrZHJvcC5qcyIsInNvdXJjZXNDb250ZW50IjpbIi8qIGVzbGludC1kaXNhYmxlIGpzeC1hMTF5L25vLXN0YXRpYy1lbGVtZW50LWludGVyYWN0aW9ucyAqL1xuLyogQGpzeEltcG9ydFNvdXJjZSBAZW1vdGlvbi9yZWFjdCAqL1xuXG5jb25zdCBiYWNrZHJvcFN0eWxlID0ge1xuICBwb3NpdGlvbjogJ2Fic29sdXRlJyxcbiAgekluZGV4OiAxLFxuICB0b3A6IDAsXG4gIGxlZnQ6IDAsXG4gIGRpc3BsYXk6ICdmbGV4JyxcbiAgZmxleFdyYXA6ICd3cmFwJyxcbiAgYWxpZ25JdGVtczogJ2NlbnRlcicsXG4gIGFsaWduQ29udGVudDogJ2NlbnRlcicsXG4gIGp1c3RpZnlDb250ZW50OiAnY2VudGVyJyxcbiAgaGVpZ2h0OiAnMTAwJScsXG4gIHdpZHRoOiAnMTAwJScsXG4gIGJhY2tncm91bmRDb2xvcjogJ3JnYmEoMCwgMCwgMCwgMCknLFxuICB0cmFuc2Zvcm06ICd0cmFuc2xhdGVZKC0xMDAlKScsXG4gIHRyYW5zaXRpb246ICdiYWNrZ3JvdW5kLWNvbG9yIDAuNXMgZWFzZSwgdHJhbnNmb3JtIDBzIDAuNXMnLFxufVxuXG5jb25zdCBiYWNrZHJvcE9wZW5TdHlsZSA9IHtcbiAgYmFja2dyb3VuZENvbG9yOiAncmdiYSgwLCAwLCAwLCAwLjYpJyxcbiAgdHJhbnNmb3JtOiAndHJhbnNsYXRlWSgwKScsXG4gIHRyYW5zaXRpb246ICdiYWNrZ3JvdW5kLWNvbG9yIDAuNXMgZWFzZScsXG4gICd+IC5vdmVybGF5LWJhY2tkcm9wJzoge1xuICAgIGRpc3BsYXk6ICdub25lJyxcbiAgfSxcbn1cblxuLy8gZXNsaW50LWRpc2FibGUtbmV4dC1saW5lIHJlYWN0L3Byb3AtdHlwZXNcbmNvbnN0IEJhY2tkcm9wID0gKHtvcGVuLCBjaGlsZHJlbiwgb25DbGljaywgLi4ucmVzdH0pID0+IChcbiAgPGRpdlxuICAgIGNzcz17W2JhY2tkcm9wU3R5bGUsIG9wZW4gJiYgYmFja2Ryb3BPcGVuU3R5bGVdfVxuICAgIGNsYXNzTmFtZT1cIm92ZXJsYXktYmFja2Ryb3BcIlxuICAgIG9uQ2xpY2s9e2V2ZW50ID0+IHtcbiAgICAgIGlmIChldmVudC50YXJnZXQgPT09IGV2ZW50LmN1cnJlbnRUYXJnZXQpIHtcbiAgICAgICAgb25DbGljaz8uKClcbiAgICAgIH1cbiAgICB9fVxuICAgIHsuLi5yZXN0fVxuICA+XG4gICAge29wZW4gJiYgY2hpbGRyZW59XG4gIDwvZGl2PlxuKVxuXG5leHBvcnQgZGVmYXVsdCBCYWNrZHJvcFxuIl19 */',
-    ],
-    className: 'overlay-backdrop',
-    onClick: event => {
-      if (event.target === event.currentTarget) {
-        onClick === null || onClick === void 0 ? void 0 : onClick()
-      }
-    },
-    ...rest,
-    children: open && children,
-  })
-
-/* @jsxImportSource @emotion/react */
-const panelStyle = {
-  alignSelf: 'center',
-  display: 'flex',
-  flexDirection: 'column',
-  overflow: 'visible',
-  maxWidth: '100%',
-  position: 'absolute',
-  bottom: '0',
-  transition: 'transform 0s 0.5s',
-  transform: 'translateY(100%)',
-  '> *:last-of-type': {
-    flex: '0 auto',
-    transition: 'transform 0.5s ease, opacity 0.5s ease',
-    transform: 'translateY(100%)',
-    opacity: '0',
-  },
-}
-const panelOpenStyle = {
-  transition: 'transform 0s 0s',
-  transform: 'translateY(0)',
-  '> *:last-of-type': {
-    transform: 'translateY(0)',
-    opacity: '1',
-  },
-} // this is for replacing recommendation panel in future
-
-const panelClosedStyle = height =>
-  height && {
-    '> *:last-of-type': {
-      // workaround IE 11 CSS calc() bug
-      transform: `translateY(100%) translateY(-${height})`,
-    },
-  }
-
-const BottomPanel = ({
-  open,
-  style,
-  backdrop = true,
-  pinned = false,
-  minimizedHeight,
-  button,
-  children,
-  onClose,
-}) => {
-  const Wrap = backdrop ? Backdrop : props => props.children
-  return jsxs(Fragment, {
-    children: [
-      jsx$1(FunctionBarExtension, {
-        children: button,
-      }),
-      jsx$1(Wrap, {
-        open: open,
-        onClick: onClose,
-        children: jsx$1('div', {
-          css: [
-            panelStyle,
-            open ? panelOpenStyle : panelClosedStyle(minimizedHeight),
-            open && style,
-            process.env.NODE_ENV === 'production' ? '' : ';label:BottomPanel;',
-            process.env.NODE_ENV === 'production'
-              ? ''
-              : '/*# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIkJvdHRvbVBhbmVsLmpzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBQTBEVSIsImZpbGUiOiJCb3R0b21QYW5lbC5qcyIsInNvdXJjZXNDb250ZW50IjpbIi8qIEBqc3hJbXBvcnRTb3VyY2UgQGVtb3Rpb24vcmVhY3QgKi9cbmltcG9ydCBQcm9wVHlwZXMgZnJvbSAncHJvcC10eXBlcydcbmltcG9ydCB7RnVuY3Rpb25CYXJFeHRlbnNpb259IGZyb20gJy4vdWlFeHRlbnNpb25zJ1xuaW1wb3J0IEJhY2tkcm9wIGZyb20gJy4vQmFja2Ryb3AnXG5cbmNvbnN0IHBhbmVsU3R5bGUgPSB7XG4gIGFsaWduU2VsZjogJ2NlbnRlcicsXG4gIGRpc3BsYXk6ICdmbGV4JyxcbiAgZmxleERpcmVjdGlvbjogJ2NvbHVtbicsXG4gIG92ZXJmbG93OiAndmlzaWJsZScsXG4gIG1heFdpZHRoOiAnMTAwJScsXG4gIHBvc2l0aW9uOiAnYWJzb2x1dGUnLFxuICBib3R0b206ICcwJyxcbiAgdHJhbnNpdGlvbjogJ3RyYW5zZm9ybSAwcyAwLjVzJyxcbiAgdHJhbnNmb3JtOiAndHJhbnNsYXRlWSgxMDAlKScsXG4gICc+ICo6bGFzdC1vZi10eXBlJzoge1xuICAgIGZsZXg6ICcwIGF1dG8nLFxuICAgIHRyYW5zaXRpb246ICd0cmFuc2Zvcm0gMC41cyBlYXNlLCBvcGFjaXR5IDAuNXMgZWFzZScsXG4gICAgdHJhbnNmb3JtOiAndHJhbnNsYXRlWSgxMDAlKScsXG4gICAgb3BhY2l0eTogJzAnLFxuICB9LFxufVxuXG5jb25zdCBwYW5lbE9wZW5TdHlsZSA9IHtcbiAgdHJhbnNpdGlvbjogJ3RyYW5zZm9ybSAwcyAwcycsXG4gIHRyYW5zZm9ybTogJ3RyYW5zbGF0ZVkoMCknLFxuICAnPiAqOmxhc3Qtb2YtdHlwZSc6IHtcbiAgICB0cmFuc2Zvcm06ICd0cmFuc2xhdGVZKDApJyxcbiAgICBvcGFjaXR5OiAnMScsXG4gIH0sXG59XG5cbi8vIHRoaXMgaXMgZm9yIHJlcGxhY2luZyByZWNvbW1lbmRhdGlvbiBwYW5lbCBpbiBmdXR1cmVcbmNvbnN0IHBhbmVsQ2xvc2VkU3R5bGUgPSBoZWlnaHQgPT5cbiAgaGVpZ2h0ICYmIHtcbiAgICAnPiAqOmxhc3Qtb2YtdHlwZSc6IHtcbiAgICAgIC8vIHdvcmthcm91bmQgSUUgMTEgQ1NTIGNhbGMoKSBidWdcbiAgICAgIHRyYW5zZm9ybTogYHRyYW5zbGF0ZVkoMTAwJSkgdHJhbnNsYXRlWSgtJHtoZWlnaHR9KWAsXG4gICAgfSxcbiAgfVxuXG5jb25zdCBCb3R0b21QYW5lbCA9ICh7XG4gIG9wZW4sXG4gIHN0eWxlLFxuICBiYWNrZHJvcCA9IHRydWUsXG4gIHBpbm5lZCA9IGZhbHNlLFxuICBtaW5pbWl6ZWRIZWlnaHQsXG4gIGJ1dHRvbixcbiAgY2hpbGRyZW4sXG4gIG9uQ2xvc2UsXG59KSA9PiB7XG4gIGNvbnN0IFdyYXAgPSBiYWNrZHJvcCA/IEJhY2tkcm9wIDogcHJvcHMgPT4gcHJvcHMuY2hpbGRyZW5cblxuICByZXR1cm4gKFxuICAgIDw+XG4gICAgICA8RnVuY3Rpb25CYXJFeHRlbnNpb24+e2J1dHRvbn08L0Z1bmN0aW9uQmFyRXh0ZW5zaW9uPlxuICAgICAgPFdyYXAgb3Blbj17b3Blbn0gb25DbGljaz17b25DbG9zZX0+XG4gICAgICAgIDxkaXZcbiAgICAgICAgICBjc3M9e1tcbiAgICAgICAgICAgIHBhbmVsU3R5bGUsXG4gICAgICAgICAgICBvcGVuID8gcGFuZWxPcGVuU3R5bGUgOiBwYW5lbENsb3NlZFN0eWxlKG1pbmltaXplZEhlaWdodCksXG4gICAgICAgICAgICBvcGVuICYmIHN0eWxlLFxuICAgICAgICAgIF19XG4gICAgICAgICAgY2xhc3NOYW1lPXtwaW5uZWQgJiYgJ3Bpbm5lZCd9XG4gICAgICAgID5cbiAgICAgICAgICB7Y2hpbGRyZW59XG4gICAgICAgIDwvZGl2PlxuICAgICAgPC9XcmFwPlxuICAgIDwvPlxuICApXG59XG5cbkJvdHRvbVBhbmVsLnByb3BUeXBlcyA9IHtcbiAgb3BlbjogUHJvcFR5cGVzLmJvb2wsXG4gIHN0eWxlOiBQcm9wVHlwZXMub2JqZWN0LFxuICBiYWNrZHJvcDogUHJvcFR5cGVzLmJvb2wsXG4gIHBpbm5lZDogUHJvcFR5cGVzLmJvb2wsXG4gIG1pbmltaXplZEhlaWdodDogUHJvcFR5cGVzLnN0cmluZyxcbiAgYnV0dG9uOiBQcm9wVHlwZXMubm9kZSxcbiAgY2hpbGRyZW46IFByb3BUeXBlcy5ub2RlLFxuICBvbkNsb3NlOiBQcm9wVHlwZXMuZnVuYyxcbn1cblxuZXhwb3J0IGRlZmF1bHQgQm90dG9tUGFuZWxcbiJdfQ== */',
-          ],
-          className: pinned && 'pinned',
-          children: children,
-        }),
-      }),
-    ],
-  })
-}
-
-BottomPanel.propTypes = {
-  open: PropTypes.bool,
-  style: PropTypes.object,
-  backdrop: PropTypes.bool,
-  pinned: PropTypes.bool,
-  minimizedHeight: PropTypes.string,
-  button: PropTypes.node,
-  children: PropTypes.node,
-  onClose: PropTypes.func,
-}
-
-/* eslint-disable no-bitwise */
-const uuidv4 = () => {
-  const crypto = window.crypto || window.msCrypto
-  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
-    (
-      c ^
-      (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))
-    ).toString(16)
-  )
-}
-
-/* eslint-disable no-empty */
-const storageKey = 'playcraft-tab-lock'
-const lockRenewTime = 3000
-
-const ensureTabLock = () => {
-  let saved = {}
-
-  try {
-    saved = JSON.parse(localStorage[storageKey])
-  } catch (e) {
-    console.log('Can read saved data for tab lock.', e)
-  }
-
-  const {expireTime} = saved
-
-  if (Date.now() <= expireTime) {
-    return
-  }
-
-  const id = uuidv4()
-
-  const renewLock = () => {
-    localStorage[storageKey] = JSON.stringify({
-      id,
-      expireTime: Date.now() + lockRenewTime * 3,
-    })
-  }
-
-  const renewInterval = setInterval(renewLock, lockRenewTime)
-
-  const releaseLock = () => {
-    clearInterval(renewInterval)
-    window.removeEventListener('beforeunload', releaseLock)
-    window.removeEventListener('unload', releaseLock)
-    localStorage[storageKey] = {
-      expireTime: Date.now() - 1,
-    }
-  }
-
-  window.addEventListener('beforeunload', releaseLock)
-  window.addEventListener('unload', releaseLock)
-  return releaseLock
-}
-
 var en = {
   'KKS.YES': 'Yes',
   'KKS.NO': 'No',
@@ -2171,32 +1700,238 @@ var Types = {
   ItemType,
 }
 
-const on$1 = (target, name, handler) => {
-  target.addEventListener(name, handler)
-  return () => target.removeEventListener(name, handler)
+const Message = ({code, property, defaultValue, wrap: Wrap = 'span'}) => {
+  const {getMessage, translate} = useContext(context)
+  const message = getMessage(code, property) || translate(defaultValue)
+  return Wrap
+    ? /*#__PURE__*/ jsx(Wrap, {
+        children: message,
+      })
+    : message
 }
 
-const once$1 = (target, name, handler) => {
-  const oneTime = (...args) => {
-    handler(...args)
-    target.removeEventListener(name, oneTime)
+Message.propTypes = {
+  code: Types.TextCode,
+  property: PropTypes.object,
+  defaultValue: Types.TextCode,
+  wrap: PropTypes.elementType,
+}
+
+const context = /*#__PURE__*/ React.createContext()
+
+const IntlProvider = ({
+  locale = LanguageCode$1.EN,
+  messages = {},
+  children,
+}) => {
+  const translations = Object.assign({}, LANGS[locale.toLowerCase()], messages)
+
+  const formatMessage = (descriptor = '', values) =>
+    (
+      translations[
+        (descriptor === null || descriptor === void 0
+          ? void 0
+          : descriptor.id) || descriptor
+      ] || ''
+    ).replace(/{(\S+?)}/gi, (substring, name) => {
+      var _values$name
+
+      return []
+        .concat(
+          (_values$name = values[name]) !== null && _values$name !== void 0
+            ? _values$name
+            : substring
+        )
+        .join(', ')
+    }) ||
+    descriptor.defaultMessage ||
+    descriptor.id ||
+    ''
+
+  const intl = {
+    formatMessage,
+    translate: formatMessage,
+    getMessage: formatMessage,
+  }
+  return /*#__PURE__*/ jsx(context.Provider, {
+    value: intl,
+    children: children,
+  })
+}
+
+IntlProvider.propTypes = {
+  locale: Types.LanguageCode,
+  messages: PropTypes.object,
+  children: PropTypes.node,
+}
+
+const useIntl = () => useContext(context)
+
+const FormattedMessage = ({id, defaultMessage, values}) => {
+  const intl = useIntl()
+  return intl.formatMessage(
+    {
+      id,
+      defaultMessage,
+    },
+    values
+  )
+}
+
+var I18n = {
+  Context: context,
+  Message,
+}
+
+function convertToSeconds(timeString) {
+  const [hours, minutes, seconds] = timeString.split(':').map(parseFloat)
+  return hours * 3600 + minutes * 60 + seconds
+}
+function getPopoverPosition(rect, target, boundary) {
+  const rectX = rect.x || rect.left
+  const boundaryX = boundary.x || boundary.left
+  const maxLeft = boundary.width - rect.width
+  const targetCenter = (target.left + target.right) / 2 - boundaryX
+  const center = rectX + rect.width / 2 - boundaryX
+  const alignLeft = rectX + (targetCenter - center) - boundaryX
+  return {
+    left: Math.max(0, Math.min(alignLeft, maxLeft)),
+    top: target.top - rect.height,
+  }
+} // eslint-disable-next-line consistent-return
+
+const nearest = (items, diff) => {
+  if (!items.length) {
+    return
   }
 
-  target.addEventListener(name, oneTime)
-  return () => target.removeEventListener(name, oneTime)
+  return items.reduce(
+    (a, b) => (Math.abs(diff(a)) > Math.abs(diff(b)) ? b : a),
+    items[0]
+  )
 }
 
-const waitFor = (check, handler) => {
-  const checkInterval = setInterval(() => {
-    if (check()) {
-      clearInterval(check)
-      handler()
-    }
-  }, 50)
-  return () => clearInterval(checkInterval)
+const meetRestriction = (quality, {minHeight, maxHeight} = {}) =>
+  !(quality.height < minHeight || quality.height > maxHeight)
+
+const selectRestrictedQuality = (
+  availableQualities,
+  {suggested, restrictions}
+) => {
+  if (meetRestriction(suggested, restrictions)) {
+    return suggested.id
+  }
+
+  const allowed = availableQualities.filter(quality =>
+    meetRestriction(quality, restrictions)
+  )
+  return (nearest(allowed, item => item.height - suggested.height) || suggested)
+    .id
 }
+// for unit test
 
 /* eslint-disable no-param-reassign */
+
+const getMediaElementState = (media, plugins = []) => {
+  const overrides = plugins.map(plugin => {
+    var _plugin$getPlaybackSt
+
+    return (_plugin$getPlaybackSt = plugin.getPlaybackStatus) === null ||
+      _plugin$getPlaybackSt === void 0
+      ? void 0
+      : _plugin$getPlaybackSt.call(plugin)
+  })
+  return Object.assign(
+    {
+      paused: media.paused,
+      ended: media.ended,
+      currentTime: media.currentTime,
+      duration: media.duration,
+    },
+    ...overrides
+  )
+}
+
+const subscribeMediaState = (media, updateState, plugins = []) => {
+  let state = {
+    playbackState: 'init',
+    waiting: false,
+    ...getMediaElementState(media, plugins),
+  }
+
+  const syncState = update => {
+    const videoElementState = getMediaElementState(media, plugins) // when playing SSAI stream,
+    // sometimes duration changes to wrong value when playing an ad
+
+    const overrides =
+      state.duration > 0
+        ? {
+            duration: state.duration,
+          }
+        : {}
+    state = {...state, ...videoElementState, ...overrides, ...update} // TODO consider shallow equal?
+
+    updateState(state)
+  }
+
+  const registered = [
+    on(media, 'error', () =>
+      syncState({
+        playbackState: 'error',
+      })
+    ),
+    on(media, 'waiting', () =>
+      syncState({
+        playbackState: 'buffering',
+      })
+    ),
+    on(media, 'loadstart', () =>
+      syncState({
+        seekEnabled: false,
+        duration: 0,
+        playbackState: 'loading',
+        waiting: true,
+      })
+    ),
+    on(
+      media,
+      'play',
+      syncState,
+      syncState({
+        paused: false,
+      })
+    ),
+    on(media, 'pause', () =>
+      syncState({
+        playbackState: 'paused',
+      })
+    ),
+    on(media, 'seeking', () =>
+      syncState({
+        playbackState: 'buffering',
+      })
+    ),
+    on(media, 'timeupdate', () =>
+      syncState(
+        !media.paused && {
+          playbackState: 'playing',
+        }
+      )
+    ),
+    on(media, 'ended', () =>
+      syncState({
+        playbackState: 'ended',
+      })
+    ),
+    on(media, 'durationchange', () => {
+      syncState({
+        seekEnabled: isFinite(media.duration),
+      })
+    }),
+  ]
+  syncState()
+  return () => registered.forEach(off => off())
+}
 
 const isEnded = media =>
   isFinite(media.initialDuration) &&
@@ -2298,23 +2033,23 @@ const subscribePlaybackState = (media, updateState) => {
   }
 
   const registered = [
-    on$1(media, 'error', event => updateIfChanged(event, 'error')),
-    on$1(media, 'waiting', updateBufferingState),
-    on$1(media, 'loadstart', event => updateIfChanged(event, 'loading')),
-    on$1(media, 'canplay', event =>
+    on(media, 'error', event => updateIfChanged(event, 'error')),
+    on(media, 'waiting', updateBufferingState),
+    on(media, 'loadstart', event => updateIfChanged(event, 'loading')),
+    on(media, 'canplay', event =>
       media.paused
         ? updateIfChanged(event, 'paused')
         : updatePlaybackTime(event)
     ),
-    on$1(media, 'pause', event => {
+    on(media, 'pause', event => {
       if (!updateEnd(event)) {
         updateIfChanged(event, 'paused')
       }
     }),
-    on$1(media, 'seeking', updateBufferingState),
-    on$1(media, 'timeupdate', updatePlaybackTime),
-    on$1(media, 'ended', updateEnd),
-    on$1(media, 'webkitendfullscreen', event => {
+    on(media, 'seeking', updateBufferingState),
+    on(media, 'timeupdate', updatePlaybackTime),
+    on(media, 'ended', updateEnd),
+    on(media, 'webkitendfullscreen', event => {
       // webkitDisplayingFullscreen is still true at the moment, can sync bake to target state
       // if paused by native exit fullscreen button, should resume playing
       const resultState =
@@ -2424,7 +2159,7 @@ const seek = (media, {player, plugins = []}, time, issuer) => {
 
     media.currentTime = seekTime
     media.dispatchEvent(new Event('seeking'))
-    once$1(media, 'seeked', () => {
+    once(media, 'seeked', () => {
       // when seeking to the end it may result in a few seconds earlier
       if (Math.abs(seekTime - media.currentTime) > 0.5) {
         media.currentTime = seekTime
@@ -2614,805 +2349,29 @@ const getAudioList = (_, {player}) => {
   return player.getAudioList()
 }
 
-const modes = {
-  videos: 'video',
-  lives: 'live',
-}
-const logEventNames = {
-  playbackBegan: 'video_playback_began',
-  playbackStarted: 'video_playback_started',
-  playbackStopped: 'video_playback_stopped',
-  playbackEnded: 'video_playback_ended',
-  bufferingStarted: 'video_buffering_started',
-  bufferingEnded: 'video_buffering_ended',
-  seeked: 'video_seeking_ended',
-  playbackError: 'video_playback_error_occurred',
-  playing: 'play',
-  paused: 'pause',
-  rewind: 'rewind',
-  forward: 'forward',
-  previousEpisode: 'previous_episode',
-  nextEpisode: 'next_episode',
-  openSettings: 'setting_page_entered',
-  closeSettings: 'setting_page_exited',
-  adPlaybackStarted: 'ad_playback_started',
-  adPlaybackStopped: 'ad_playback_stopped',
-}
-
-const mapLogEvents = ({
-  video,
-  session = video,
-  version,
-  playerName,
-  getPlaybackStatus = () => video,
-}) => {
-  var _session$getContent
-
-  const emitter = mitt()
-  const state = {
-    status: 'init',
-    seeking: false,
-    playerStartTime: Date.now(),
-    moduleStartTime: Date.now(),
-    content:
-      ((_session$getContent = session.getContent) === null ||
-      _session$getContent === void 0
-        ? void 0
-        : _session$getContent.call(session)) || {},
-  }
-
-  const commonPropties = () => {
-    var _state$content$sectio
-
-    return {
-      player_name: playerName,
-      playback_module_version: version,
-      playback_mode: modes[state.content.type],
-      playback_session_id: state.sessionId,
-      id: state.content.id,
-      name: state.content.title,
-      ...(state.content.type === 'videos' && {
-        current_position: state.currentTime,
-        video_total_duration: state.duration,
-      }),
-      ...(state.content.type === 'lives' && {
-        section_id:
-          (_state$content$sectio = state.content.section) === null ||
-          _state$content$sectio === void 0
-            ? void 0
-            : _state$content$sectio.id,
-        name_2: state.content.channelName,
-      }),
-      SSAI: state.ssaiProvider || 'None',
-    }
-  }
-
-  const dispatchStart = () => {
-    if (state.status === 'started') {
-      return
-    }
-
-    state.status = 'started'
-    state.lastStartTime = Date.now()
-    const eventName = state.isPlayingAd
-      ? 'adPlaybackStarted'
-      : 'playbackStarted'
-    emitter.emit(eventName, commonPropties())
-  }
-
-  const dispatchStop = () => {
-    if (state.status !== 'started') {
-      return
-    }
-
-    state.status = 'stopped'
-    const played = (Date.now() - state.lastStartTime) / 1000
-
-    if (state.isPlayingAd) {
-      state.adPlayedDuration += played
-    } else {
-      state.playedDuration += played
-    }
-
-    const eventName = state.isPlayingAd
-      ? 'adPlaybackStopped'
-      : 'playbackStopped'
-    emitter.emit(eventName, {
-      ...commonPropties(),
-      ...(state.isPlayingAd && {
-        ad_played_duration: played,
-      }),
-    })
-  }
-
-  const registered = [
-    on$1(video, 'error', event => {
-      var _event$error, _event$error2, _event$error2$data
-
-      emitter.emit('playbackError', {
-        module_error_code:
-          ((_event$error = event.error) === null || _event$error === void 0
-            ? void 0
-            : _event$error.code) ||
-          ((_event$error2 = event.error) === null || _event$error2 === void 0
-            ? void 0
-            : (_event$error2$data = _event$error2.data) === null ||
-              _event$error2$data === void 0
-            ? void 0
-            : _event$error2$data.code),
-        ...commonPropties(),
-      })
-    }),
-    once$1(video, 'playerStarted', () => {
-      state.playerStartTime = Date.now()
-    }),
-    on$1(video, 'durationchange', () => {
-      // duration may change when playing an ad stitched stream, take only initial value
-      if (!state.duration) {
-        state.duration = getPlaybackStatus().duration
-      }
-    }),
-    once$1(video, 'canplay', () => {
-      state.status = 'began'
-      state.sessionId = uuidv4()
-      state.playedDuration = 0
-      emitter.emit('playbackBegan', {
-        player_startup_time:
-          (state.playerStartTime - state.moduleStartTime) / 1000,
-        video_startup_time: (Date.now() - state.moduleStartTime) / 1000,
-        ...commonPropties(),
-      })
-    }),
-    on$1(video, 'playing', dispatchStart),
-    on$1(video, 'waiting', () => {
-      if (!state.bufferingStartTime) {
-        emitter.emit('bufferingStarted', commonPropties())
-        state.bufferingStartTime = Date.now()
-      }
-    }),
-    on$1(video, 'timeupdate', () => {
-      state.currentTime = getPlaybackStatus().currentTime
-
-      if (state.bufferingStartTime) {
-        emitter.emit('bufferingEnded', {
-          buffering_second: (Date.now() - state.bufferingStartTime) / 1000,
-          ...commonPropties(),
-        })
-        state.bufferingStartTime = undefined
-      }
-    }),
-    on$1(video, 'pause', dispatchStop),
-    on$1(video, 'seeking', () => {
-      state.seekingFrom = state.currentTime
-    }),
-    on$1(session, 'userSeeking', () => {
-      state.seeking = true
-    }),
-    on$1(video, 'seeked', () => {
-      if (state.seeking) {
-        emitter.emit('seeked', {
-          seeking_from: state.seekingFrom,
-          seeking_to: video.currentTime,
-          ...commonPropties(),
-        })
-      }
-
-      state.seeking = false
-    }),
-    on$1(session, 'sectionChange', () => {
-      dispatchStop()
-      state.content = session.getContent()
-      dispatchStart()
-    }),
-    once$1(video, 'emptied', () => {
-      if (state.status === 'started') {
-        dispatchStop()
-      }
-
-      state.status = 'init'
-      emitter.emit('playbackEnded', {
-        video_playback_ended_at_percentage: state.currentTime / state.duration,
-        video_total_played_duration: state.playedDuration,
-        ...(state.ssaiProvider && {
-          ad_total_played_duration: state.adPlayedDuration,
-        }),
-        ...commonPropties(),
-      })
-    }),
-    once$1(video, 'loadedAdMetadata', event => {
-      state.ssaiProvider = event.data.provider
-      state.adPlayedDuration = 0
-    }),
-    on$1(session, 'adBreakStarted', () => {
-      dispatchStop()
-      state.isPlayingAd = true
-
-      if (!state.seeking) {
-        dispatchStart()
-      }
-    }),
-    on$1(session, 'adBreakEnded', () => {
-      dispatchStop()
-      state.isPlayingAd = false
-
-      if (!state.seeking) {
-        dispatchStart()
-      }
-    }),
-  ]
-  return {
-    addEventListener: (name, handler) => emitter.on(name, handler),
-    all: handler => emitter.on('*', handler),
-    emit: (name, {currentTime}) => {
-      emitter.emit(name, {
-        current_position: currentTime,
-        ...commonPropties(),
-      })
-    },
-    updateContent: content => {
-      state.content = content
-    },
-    reset: () => registered.forEach(off => off()),
-  }
-}
-
-const deepEqual = (current, updated) =>
-  JSON.stringify(current) === JSON.stringify(updated)
-
-const HEARTBEAT_INTERVAL_MS = 10000
-const UPDATE_INTERVAL_MS = 10000
-
-const startPlaybackSession = async (playbackApi, options = {}) => {
-  var _options$cache, _options$cache$get, _options$cache2, _options$cache2$get
-
-  const emitter = mitt()
-  const {type, id, getCurrentTime} = options
-  const {
-    onChangeContent,
-    onChangeStream,
-    onInvalidToken,
-    heartbeatTime = HEARTBEAT_INTERVAL_MS,
-    updateTime = UPDATE_INTERVAL_MS,
-  } = options
-  const state = {}
-
-  const updateContent = async contentInCache => {
-    const content =
-      !contentInCache || contentInCache.end_time * 1000 <= Date.now()
-        ? await playbackApi.getContent({
-            type,
-            id,
-          })
-        : contentInCache
-
-    if (!deepEqual(content, state.content)) {
-      state.content = content
-      onChangeContent === null || onChangeContent === void 0
-        ? void 0
-        : onChangeContent({
-            type,
-            ...content,
-            sources: state.sources,
-          })
-    }
-  } // get last playback time to start playback fast
-  // getContent is not critical, so don't block playback if it hangs or fails(ignored in API logic)
-
-  const loadContent = Promise.race([
-    updateContent(
-      (_options$cache = options.cache) === null || _options$cache === void 0
-        ? void 0
-        : (_options$cache$get = _options$cache.get(`${type}/${id}`)) === null ||
-          _options$cache$get === void 0
-        ? void 0
-        : _options$cache$get.content
-    ),
-    new Promise(resolve => {
-      setTimeout(resolve, UPDATE_INTERVAL_MS)
-    }),
-  ])
-  const sessionInfo = await playbackApi.startPlayback({
-    type,
-    id,
-  })
-  const requestParams = {
-    type,
-    id,
-    token: sessionInfo.token,
-  }
-  state.sources = (
-    ((_options$cache2 = options.cache) === null || _options$cache2 === void 0
-      ? void 0
-      : (_options$cache2$get = _options$cache2.get(`${type}/${id}`)) === null ||
-        _options$cache2$get === void 0
-      ? void 0
-      : _options$cache2$get.playbackInfo) ||
-    (await playbackApi.getPlaybackInfo(requestParams))
-  ).sources
-  onChangeStream === null || onChangeStream === void 0
-    ? void 0
-    : onChangeStream({
-        type,
-        ...state,
-      })
-  let updateIntervalId
-
-  if (type === 'lives') {
-    updateIntervalId = setInterval(updateContent, updateTime)
-  }
-
-  let lastPlayedTime
-
-  const updateLastPlayed = () => {
-    const currentTime =
-      getCurrentTime === null || getCurrentTime === void 0
-        ? void 0
-        : getCurrentTime()
-
-    if (currentTime >= 0 && lastPlayedTime !== currentTime) {
-      lastPlayedTime = currentTime
-      playbackApi.updateLastPlayed({...requestParams, time: currentTime})
-    }
-  }
-
-  if (type === 'videos') {
-    updateIntervalId = setInterval(updateLastPlayed, updateTime)
-  }
-
-  const heartbeatIntervalId = setInterval(
-    () =>
-      playbackApi.heartbeat(requestParams).catch(error => {
-        var _error$response
-
-        if (
-          /4\d\d/.test(
-            (_error$response = error.response) === null ||
-              _error$response === void 0
-              ? void 0
-              : _error$response.status
-          )
-        ) {
-          clearInterval(heartbeatIntervalId)
-          onInvalidToken === null || onInvalidToken === void 0
-            ? void 0
-            : onInvalidToken(error)
+const blurPause = (media, pause) => {
+  const handleVisibilitychange = async () => {
+    let shouldPause = true
+    pause()
+    setTimeout(() => {
+      shouldPause = false
+    }, 50)
+    media.addEventListener(
+      'play',
+      () => {
+        if (shouldPause) {
+          pause()
         }
-      }),
-    heartbeatTime
-  )
-
-  const end = () => {
-    updateLastPlayed()
-    clearInterval(updateIntervalId)
-    clearInterval(heartbeatIntervalId)
-    emitter.emit('playbackEnded')
-    return playbackApi.endPlayback(requestParams)
-  }
-
-  await loadContent
-  return {
-    ...state,
-    token: sessionInfo.token,
-    drmPortalUrl: sessionInfo.drm_portal_url,
-    updateLastPlayed,
-    end,
-  }
-}
-
-const preload = (
-  playbackApi,
-  preloadList,
-  currentContent,
-  cache,
-  options = {}
-) => {
-  const {updateTime = 10000} = options
-
-  const fetchData = () => {
-    preloadList.forEach(async ({contentType: type, contentId: id}) => {
-      var _cache$get, _cache$get$content
-
-      if (id === currentContent.id && type === currentContent.type) return
-      const endTime =
-        (_cache$get = cache.get(`${type}/${id}`)) === null ||
-        _cache$get === void 0
-          ? void 0
-          : (_cache$get$content = _cache$get.content) === null ||
-            _cache$get$content === void 0
-          ? void 0
-          : _cache$get$content.end_time
-      if (typeof endTime === 'number' && endTime * 1000 >= Date.now()) return
-
-      try {
-        const {token} = await playbackApi.startPlayback({
-          type,
-          id,
-        })
-        const waitForContent = playbackApi.getContent({
-          type,
-          id,
-        })
-        const waitForPlaybackInfo = playbackApi.getPlaybackInfo({
-          type,
-          id,
-          token,
-        })
-        const [content, playbackInfo] = await Promise.all([
-          waitForContent,
-          waitForPlaybackInfo,
-        ])
-        cache.set(`${type}/${id}`, {
-          content,
-          playbackInfo,
-        })
-        playbackApi.endPlayback({
-          type,
-          id,
-          token,
-        })
-      } catch (e) {
-        console.error(e)
+      },
+      {
+        once: true,
       }
-    })
-  }
-
-  fetchData()
-  const fetchDataIntervalID = setInterval(fetchData, updateTime)
-  return () => clearInterval(fetchDataIntervalID)
-}
-
-const getSourceTypeSettings = sources => {
-  if (
-    !((sources === null || sources === void 0 ? void 0 : sources.length) > 1)
-  ) {
-    return
-  }
-
-  const items = sources.map(source => ({
-    value: source.type,
-    label: source.type.toUpperCase(),
-  }))
-
-  const getDefault = preferred =>
-    (items.find(item => item.value === preferred) || items[0] || {}).value
-
-  return {
-    name: 'source-type',
-    title: 'KKS.SETTING.VERSION',
-    items,
-    getDefault,
-  }
-}
-
-/* eslint-disable no-param-reassign */
-
-const waitMs = time =>
-  new Promise(resolve => {
-    setTimeout(resolve, time)
-  })
-
-const handleRequestError = (result, {onError, retryTimes = 0}) =>
-  result.catch(error =>
-    onError(error, {
-      retry: () =>
-        handleRequestError(axios(error.config), {
-          onError,
-          retryTimes: retryTimes + 1,
-        }),
-      retryTimes,
-    })
-  )
-
-const ignoreMinorError = async (event, {retry, retryTimes} = {}) => {
-  var _event$response, _event$response2, _event$config
-
-  console.warn(event)
-
-  if (
-    (((_event$response = event.response) === null || _event$response === void 0
-      ? void 0
-      : _event$response.message) === 'Network Error' ||
-      /502|503/.test(
-        (_event$response2 = event.response) === null ||
-          _event$response2 === void 0
-          ? void 0
-          : _event$response2.status
-      )) &&
-    retryTimes < 3
-  ) {
-    await waitMs(3000)
-    return retry()
-  }
-
-  if (
-    /start$|info$|heartbeat$/.test(
-      (_event$config = event.config) === null || _event$config === void 0
-        ? void 0
-        : _event$config.url
     )
-  ) {
-    return Promise.reject(event)
   }
 
-  console.log('Ignore non-critical playback API fail', event)
-  return new Promise(() => {})
-}
-
-const createApi = (
-  {host, accessToken, deviceId, headers, params},
-  {onError = ignoreMinorError} = {}
-) => {
-  const getHeaders = () => ({
-    ...(accessToken && {
-      Authorization: accessToken,
-    }),
-    ...(deviceId && {
-      'X-Device-ID': deviceId,
-    }),
-    'Content-type': 'application/json',
-    ...headers,
-  })
-
-  const request = (url, {method} = {}) =>
-    handleRequestError(
-      axios(url, {
-        method,
-        headers: getHeaders(),
-        params,
-      }),
-      {
-        onError,
-      }
-    ).then(response => response.data)
-
-  const sessionRequest = (path, {method = 'POST', type, id, token}) =>
-    handleRequestError(
-      axios(`${host}/sessions/${type}/${id}/playback/${deviceId}/${path}`, {
-        method,
-        headers: getHeaders(),
-        params: {...params, playback_token: token},
-      }),
-      {
-        onError,
-      }
-    ).then(response => response.data)
-
-  return {
-    getContent: ({type, id}) => request(`${host}/${type}/${id}`, {}),
-    startPlayback: ({type, id}) =>
-      request(`${host}/sessions/${type}/${id}/playback/${deviceId}/start`, {
-        method: 'POST',
-      }),
-    getPlaybackInfo: ({type, id, token}) =>
-      sessionRequest('info', {
-        method: 'GET',
-        type,
-        id,
-        token,
-      }),
-    heartbeat: ({type, id, token}) =>
-      sessionRequest('heartbeat', {
-        type,
-        id,
-        token,
-      }),
-    updateLastPlayed: ({type, id, token, time}) =>
-      sessionRequest(`position/${Math.floor(time)}`, {
-        type,
-        id,
-        token,
-      }),
-    endPlayback: ({type, id, token}) =>
-      sessionRequest('end', {
-        type,
-        id,
-        token,
-      }),
-  }
-}
-
-const getStreamInfo = (sources = [], type = '') => {
-  const activeSource =
-    sources.find(source => source.type === type) || sources[0]
-  return (
-    (activeSource === null || activeSource === void 0
-      ? void 0
-      : activeSource.manifests) || []
-  ).reduce(
-    (data, manifest) => {
-      const {url, ...info} = manifest
-      data.source[manifest.protocol] = url // SSAI plugins need manifest.ssai, and for other extra data
-
-      data.source.info[manifest.protocol] = info
-      data.quality[manifest.protocol] = info.resolutions.map(({height}) => ({
-        label: height,
-        value: height,
-        options: {
-          maxHeight: height,
-        },
-      }))
-      return data
-    },
-    {
-      source: {
-        info: {},
-      },
-      quality: {},
-      thumbnailsUrl:
-        activeSource === null || activeSource === void 0
-          ? void 0
-          : activeSource.thumbnail_seeking_url,
-    }
-  )
-}
-
-const getContentInfo = data => {
-  var _data$time, _data$time2
-
-  return {
-    title: data.title,
-    channelTitle: data.subtitle,
-    end: data.end,
-    section: {
-      id: data.section_id,
-      start: data.start_time,
-      end: data.end_time,
-    },
-    previous: data.prev_video,
-    next: data.next_video,
-    startTime:
-      (_data$time = data.time) === null || _data$time === void 0
-        ? void 0
-        : _data$time.last_position,
-    chapters: [
-      ((_data$time2 = data.time) === null || _data$time2 === void 0
-        ? void 0
-        : _data$time2.end_start_position) && {
-        type: 'ending',
-        start: data.time.end_start_position,
-      },
-    ].filter(Boolean),
-  }
-}
-
-const getChannelTime = ({start, end}) => {
-  const duration = end - start
-  const nowSecond = Math.floor(Date.now() / 1000)
-  const currentTime = Math.max(0, Math.min(nowSecond - start, duration))
-  return {
-    currentTime,
-    duration,
-  }
-}
-
-const LinearTimeRewrite = () => {
-  const state = {}
-  return {
-    getPlaybackStatus: () => {
-      const timeInfo = getChannelTime(state)
-      return (
-        (timeInfo === null || timeInfo === void 0
-          ? void 0
-          : timeInfo.duration) > 0 && timeInfo
-      )
-    },
-    handleSectionChange: section => Object.assign(state, section),
-  }
-}
-
-const formattedTime = sourceTime => {
-  const time = sourceTime >= 0 ? sourceTime : 0
-  const seconds = Math.floor(time % 60)
-    .toString()
-    .padStart(2, '0')
-  const minutes = Math.floor((time / 60) % 60)
-    .toString()
-    .padStart(2, '0')
-  const hours = time >= 3600 && Math.floor((time / 60 / 60) % 60).toString()
-  return [hours, minutes, seconds].filter(Boolean).join(':')
-}
-
-const linkPluginEvents = (plugins, handlers) => {
-  const registered = plugins.map(plugin =>
-    Object.entries(handlers).map(([eventName, handler]) => {
-      var _plugin$on
-
-      return (_plugin$on = plugin.on) === null || _plugin$on === void 0
-        ? void 0
-        : _plugin$on.call(plugin, eventName, event => handler(event, plugin))
-    })
-  )
+  document.addEventListener('visibilitychange', handleVisibilitychange)
   return () =>
-    []
-      .concat(...registered)
-      .forEach(removeListener =>
-        removeListener === null || removeListener === void 0
-          ? void 0
-          : removeListener()
-      )
-}
-
-const Message = ({code, property, defaultValue, wrap: Wrap = 'span'}) => {
-  const {getMessage, translate} = useContext(context)
-  const message = getMessage(code, property) || translate(defaultValue)
-  return Wrap
-    ? /*#__PURE__*/ jsx(Wrap, {
-        children: message,
-      })
-    : message
-}
-
-Message.propTypes = {
-  code: Types.TextCode,
-  property: PropTypes.object,
-  defaultValue: Types.TextCode,
-  wrap: PropTypes.elementType,
-}
-
-const context = /*#__PURE__*/ React.createContext()
-
-const IntlProvider = ({
-  locale = LanguageCode$1.EN,
-  messages = {},
-  children,
-}) => {
-  const translations = Object.assign({}, LANGS[locale.toLowerCase()], messages)
-
-  const formatMessage = (descriptor = '', values) =>
-    (
-      translations[
-        (descriptor === null || descriptor === void 0
-          ? void 0
-          : descriptor.id) || descriptor
-      ] || ''
-    ).replace(/{(\S+?)}/gi, (substring, name) => {
-      var _values$name
-
-      return []
-        .concat(
-          (_values$name = values[name]) !== null && _values$name !== void 0
-            ? _values$name
-            : substring
-        )
-        .join(', ')
-    }) ||
-    descriptor.defaultMessage ||
-    descriptor.id ||
-    ''
-
-  const intl = {
-    formatMessage,
-    translate: formatMessage,
-    getMessage: formatMessage,
-  }
-  return /*#__PURE__*/ jsx(context.Provider, {
-    value: intl,
-    children: children,
-  })
-}
-
-IntlProvider.propTypes = {
-  locale: Types.LanguageCode,
-  messages: PropTypes.object,
-  children: PropTypes.node,
-}
-
-const useIntl = () => useContext(context)
-
-const FormattedMessage = ({id, defaultMessage, values}) => {
-  const intl = useIntl()
-  return intl.formatMessage(
-    {
-      id,
-      defaultMessage,
-    },
-    values
-  )
-}
-
-var I18n = {
-  Context: context,
-  Message,
+    document.removeEventListener('visibilitychange', handleVisibilitychange)
 }
 
 var icon = {
@@ -3722,368 +2681,53 @@ const SkipButton = ({waitTime, onClick}) =>
     ],
   })
 
-const type = {
-  SELECT_MEDIA_SOURCE: 'UI_SELECT_MEDIA_SOURCE',
-  SET_MEDIA_SOURCES: 'UI_SET_MEDIA_SOURCES',
-  CHANGE_RECOMMENDATION_PANEL: 'CHANGE_RECOMMENDATION_PANEL',
-  TOGGLE_RECOMMENDATION_PANEL: 'TOGGLE_RECOMMENDATION_PANEL',
-  OPEN_PANEL: 'OPEN_PANEL',
-  HIDE_PANEL: 'HIDE_PANEL',
-  OFFER_AUTOPLAY: 'OFFER_AUTOPLAY',
-  DISMISS_AUTOPLAY: 'DISMISS_AUTOPLAY',
-  ERROR: 'UI_ERROR',
-  RESET_END_ROLL: 'RESET_END_ROLL',
-  STREAM_EVENTS_CHANGED: 'STREAM_EVENTS_CHANGED',
-  AD_BREAK_STARTED: 'AD_BREAK_STARTED',
-  AD_BREAK_ENDED: 'AD_BREAK_ENDED',
-  VISIBILITY_CHANGE: 'VISIBILITY_CHANGE',
-  PLAYBACK_END: 'PLAYBACK_END',
+/* eslint-disable jsx-a11y/no-static-element-interactions */
+
+/* @jsxImportSource @emotion/react */
+const backdropStyle = {
+  position: 'absolute',
+  zIndex: 1,
+  top: 0,
+  left: 0,
+  display: 'flex',
+  flexWrap: 'wrap',
+  alignItems: 'center',
+  alignContent: 'center',
+  justifyContent: 'center',
+  height: '100%',
+  width: '100%',
+  backgroundColor: 'rgba(0, 0, 0, 0)',
+  transform: 'translateY(-100%)',
+  transition: 'background-color 0.5s ease, transform 0s 0.5s',
 }
-var uiActions = {
-  selectMediaSource: mediaSource => ({
-    type: type.SELECT_MEDIA_SOURCE,
-    mediaSource,
-  }),
-  setMediaSources: (items = []) => ({
-    type: type.SET_MEDIA_SOURCES,
-    items,
-  }),
-  enableRecommendationPanel: () => ({
-    type: type.CHANGE_RECOMMENDATION_PANEL,
-    enabled: true,
-  }),
-  disableRecommendationPanel: () => ({
-    type: type.CHANGE_RECOMMENDATION_PANEL,
-    enabled: false,
-  }),
-  toggleRecommendationPanel: () => ({
-    type: type.TOGGLE_RECOMMENDATION_PANEL,
-  }),
-  openPanel: panel => ({
-    type: type.OPEN_PANEL,
-    panel,
-  }),
-  hidePanel: () => ({
-    type: type.HIDE_PANEL,
-  }),
-  offerAutoplay: state => ({
-    type: type.OFFER_AUTOPLAY,
-    endState: state,
-  }),
-  dismissAutoplay: () => ({
-    type: type.DISMISS_AUTOPLAY,
-  }),
-  streamEventsChanged: (streamEvents, playbackStatus) => ({
-    type: type.STREAM_EVENTS_CHANGED,
-    streamEvents,
-    playbackStatus,
-  }),
-  adBreakStarted: (adProgressData, skipTimeOffset) => ({
-    type: type.AD_BREAK_STARTED,
-    adProgressData,
-    skipTimeOffset,
-  }),
-  adBreakEnded: () => ({
-    type: type.AD_BREAK_ENDED,
-  }),
-  playbackEnd: () => ({
-    type: type.PLAYBACK_END,
-  }),
-}
+const backdropOpenStyle = {
+  backgroundColor: 'rgba(0, 0, 0, 0.6)',
+  transform: 'translateY(0)',
+  transition: 'background-color 0.5s ease',
+  '~ .overlay-backdrop': {
+    display: 'none',
+  },
+} // eslint-disable-next-line react/prop-types
 
-/* eslint-disable react/prop-types */
-
-const linkAdState = ({contentType, dispatch, plugins}) => {
-  const handleStart = event => {
-    var _event$getAd
-
-    // TODO playlog ad start event
-    dispatch(
-      uiActions.adBreakStarted(
-        event.getStreamData().adProgressData,
-        contentType !== 'lives' &&
-          ((_event$getAd = event.getAd()) === null || _event$getAd === void 0
-            ? void 0
-            : _event$getAd.getSkipTimeOffset())
-      )
-    )
-  }
-
-  return linkPluginEvents(plugins, {
-    cuepointsChanged: (event, plugin) =>
-      dispatch(
-        uiActions.streamEventsChanged(
-          event.cuepoints,
-          plugin.getPlaybackStatus()
-        )
-      ),
-    adBreakStarted: handleStart,
-    adBreakEnded: () => {
-      // TODO playlog ad end event
-      dispatch(uiActions.adBreakEnded())
-    },
-  })
-}
-
-const useIntervalUpdate = get => {
-  const [value, setValue] = useState(0)
-  useEffect(() => {
-    const intervalId = setInterval(() => setValue(get()), 500)
-    return () => clearInterval(intervalId)
-  }, [])
-  return value
-}
-
-const SkipAdButton = ({skipAd, getWaitTime}) => {
-  const waitTime = useIntervalUpdate(getWaitTime)
-  return (
-    isFinite(waitTime) &&
-    /*#__PURE__*/ jsx(SkipButton, {
-      waitTime: waitTime,
-      onClick: skipAd,
-    })
-  )
-}
-
-const Status = ({total, position, getRemainingTime}) => {
-  const remainingTime = useIntervalUpdate(getRemainingTime)
-  return (
-    total > 0 && `Ad ${position} of ${total}・${formattedTime(remainingTime)}`
-  )
-}
-
-const mergeAdUi = (
-  uiElements,
-  {position, total, adBreakDuration, skipTimeOffset, clickThroughUrl},
-  plugins,
-  media
-) => {
-  const getRemainingTime = () => getMediaTime(media, plugins).adRemainingTime
-
-  const getSkipWaitTime = () =>
-    skipTimeOffset >= 0
-      ? getRemainingTime() - (adBreakDuration - skipTimeOffset)
-      : Infinity
-
-  return {
-    title: '',
-    channelTitle: '',
-    controlButtons: {
-      playButton: uiElements.controlButtons.playButton,
-    },
-    seekbar: '',
-    adLink:
-      clickThroughUrl &&
-      /*#__PURE__*/ jsx('a', {
-        href: clickThroughUrl,
-        rel: 'noreferrer',
-        target: '_blank',
-        children: /*#__PURE__*/ jsx(FormattedMessage, {
-          id: 'KKS.SSAI.LEARN.MORE',
-        }),
-      }),
-    adStatus: /*#__PURE__*/ jsx(Status, {
-      position: position,
-      total: total,
-      getRemainingTime: getRemainingTime,
-    }),
-    adSkipButton: /*#__PURE__*/ jsx(SkipAdButton, {
-      getWaitTime: getSkipWaitTime,
-      skipAd: () =>
-        plugins.forEach(plugin => {
-          var _plugin$skipAd
-
-          return (_plugin$skipAd = plugin.skipAd) === null ||
-            _plugin$skipAd === void 0
-            ? void 0
-            : _plugin$skipAd.call(plugin)
-        }),
-    }),
-  }
-}
-
-const multiRef =
-  (...refs) =>
-  element => {
-    if (element) {
-      refs.forEach(ref => {
-        if (ref && 'current' in ref) {
-          // eslint-disable-next-line no-param-reassign
-          ref.current = element
-        } else {
-          ref === null || ref === void 0 ? void 0 : ref(element)
-        }
-      })
-    }
-  }
-
-const vendors = {
-  change: ['fullscreenchange', 'webkitfullscreenchange', 'MSFullscreenChange'],
-  element: [
-    'fullscreenElement',
-    'webkitFullscreenElement',
-    'msFullscreenElement',
-  ],
-  request: [
-    'requestFullscreen',
-    'webkitRequestFullScreen',
-    'msRequestFullscreen',
-  ],
-  exit: ['exitFullscreen', 'webkitExitFullscreen', 'msExitFullscreen'],
-}
-
-const getName = (object, nameList) => nameList.find(name => name in object)
-
-const onViewModeChange = (video, onChange) => {
-  const vendorElementName = getName(document, vendors.element)
-
-  if (vendorElementName) {
-    onChange(document[vendorElementName] ? 'fullscreen' : 'inline')
-    return vendors.change.map(name =>
-      on$1(document, name, () =>
-        onChange(document[vendorElementName] ? 'fullscreen' : 'inline')
-      )
-    )
-  }
-
-  onChange(video.webkitDisplayingFullscreen ? 'fullscreen' : 'inline')
-  const registered = [
-    on$1(video, 'webkitbeginfullscreen', () => onChange('fullscreen')),
-    on$1(video, 'webkitendfullscreen', () => onChange('inline')),
-  ]
-  return () => {
-    registered.forEach(removeListener => removeListener())
-  }
-}
-
-const toggleFullscreen = container => {
-  const vendorElementName = getName(document, vendors.element)
-
-  if (vendorElementName) {
-    const action = document[vendorElementName] ? 'exit' : 'request'
-    const target = action === 'request' ? container : document
-    return target[getName(target, vendors[action])]()
-  }
-
-  const target = container.querySelector('video')
-  return target.webkitDisplayingFullscreen
-    ? target.webkitExitFullScreen()
-    : target.webkitEnterFullScreen()
-}
-
-/*
-  Rules:
-    1  Set `true` immediately in first time (For loadstart event)
-    2. Set `true` to waiting lazily but update waiting to `false` immediately
-*/
-
-const useLazyWaiting = waiting => {
-  const [first, setFirst] = useState(true)
-  const [state, dispatch] = useState(waiting)
-  const timer = useRef()
-  useEffect(() => {
-    clearTimeout(timer.current)
-
-    if (waiting && !first) {
-      timer.current = setTimeout(() => {
-        dispatch(waiting)
-      }, 1000)
-    } else {
-      dispatch(waiting)
-      setFirst(false)
-    }
-
-    return () => clearTimeout(timer.current)
-  }, [waiting])
-  return state
-}
-
-const useAutoHide = ({hideTimeMs = 3000, pinned, tapToHide, onHide} = {}) => {
-  const timer = useRef()
-  const [mode, setMode] = useState('hidden')
-
-  const interact = () => {
-    if (mode !== 'shown') {
-      setMode('shown')
-    }
-
-    clearTimeout(timer.current)
-
-    if (!pinned) {
-      timer.current = setTimeout(() => setMode('hidden'), hideTimeMs)
-    }
-  }
-
-  const hide = () => {
-    clearTimeout(timer.current)
-    setMode('hidden')
-    onHide === null || onHide === void 0 ? void 0 : onHide()
-  }
-
-  useEffect(() => {
-    if (mode === 'shown') {
-      interact()
-    }
-  }, [hideTimeMs])
-  useEffect(() => {
-    if (pinned) {
-      setMode('shown')
-      clearTimeout(timer.current)
-    } else {
-      interact()
-    }
-  }, [pinned])
-  useEffect(
-    () => () => {
-      clearTimeout(timer.current)
-    },
-    []
-  )
-  return {
-    mode,
-    show: interact,
-    hide,
+const Backdrop = ({open, children, onClick, ...rest}) =>
+  jsx$1('div', {
+    css: [
+      backdropStyle,
+      open && backdropOpenStyle,
+      process.env.NODE_ENV === 'production' ? '' : ';label:Backdrop;',
+      process.env.NODE_ENV === 'production'
+        ? ''
+        : '/*# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIkJhY2tkcm9wLmpzIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBQWdDSSIsImZpbGUiOiJCYWNrZHJvcC5qcyIsInNvdXJjZXNDb250ZW50IjpbIi8qIGVzbGludC1kaXNhYmxlIGpzeC1hMTF5L25vLXN0YXRpYy1lbGVtZW50LWludGVyYWN0aW9ucyAqL1xuLyogQGpzeEltcG9ydFNvdXJjZSBAZW1vdGlvbi9yZWFjdCAqL1xuXG5jb25zdCBiYWNrZHJvcFN0eWxlID0ge1xuICBwb3NpdGlvbjogJ2Fic29sdXRlJyxcbiAgekluZGV4OiAxLFxuICB0b3A6IDAsXG4gIGxlZnQ6IDAsXG4gIGRpc3BsYXk6ICdmbGV4JyxcbiAgZmxleFdyYXA6ICd3cmFwJyxcbiAgYWxpZ25JdGVtczogJ2NlbnRlcicsXG4gIGFsaWduQ29udGVudDogJ2NlbnRlcicsXG4gIGp1c3RpZnlDb250ZW50OiAnY2VudGVyJyxcbiAgaGVpZ2h0OiAnMTAwJScsXG4gIHdpZHRoOiAnMTAwJScsXG4gIGJhY2tncm91bmRDb2xvcjogJ3JnYmEoMCwgMCwgMCwgMCknLFxuICB0cmFuc2Zvcm06ICd0cmFuc2xhdGVZKC0xMDAlKScsXG4gIHRyYW5zaXRpb246ICdiYWNrZ3JvdW5kLWNvbG9yIDAuNXMgZWFzZSwgdHJhbnNmb3JtIDBzIDAuNXMnLFxufVxuXG5jb25zdCBiYWNrZHJvcE9wZW5TdHlsZSA9IHtcbiAgYmFja2dyb3VuZENvbG9yOiAncmdiYSgwLCAwLCAwLCAwLjYpJyxcbiAgdHJhbnNmb3JtOiAndHJhbnNsYXRlWSgwKScsXG4gIHRyYW5zaXRpb246ICdiYWNrZ3JvdW5kLWNvbG9yIDAuNXMgZWFzZScsXG4gICd+IC5vdmVybGF5LWJhY2tkcm9wJzoge1xuICAgIGRpc3BsYXk6ICdub25lJyxcbiAgfSxcbn1cblxuLy8gZXNsaW50LWRpc2FibGUtbmV4dC1saW5lIHJlYWN0L3Byb3AtdHlwZXNcbmNvbnN0IEJhY2tkcm9wID0gKHtvcGVuLCBjaGlsZHJlbiwgb25DbGljaywgLi4ucmVzdH0pID0+IChcbiAgPGRpdlxuICAgIGNzcz17W2JhY2tkcm9wU3R5bGUsIG9wZW4gJiYgYmFja2Ryb3BPcGVuU3R5bGVdfVxuICAgIGNsYXNzTmFtZT1cIm92ZXJsYXktYmFja2Ryb3BcIlxuICAgIG9uQ2xpY2s9e2V2ZW50ID0+IHtcbiAgICAgIGlmIChldmVudC50YXJnZXQgPT09IGV2ZW50LmN1cnJlbnRUYXJnZXQpIHtcbiAgICAgICAgb25DbGljaz8uKClcbiAgICAgIH1cbiAgICB9fVxuICAgIHsuLi5yZXN0fVxuICA+XG4gICAge29wZW4gJiYgY2hpbGRyZW59XG4gIDwvZGl2PlxuKVxuXG5leHBvcnQgZGVmYXVsdCBCYWNrZHJvcFxuIl19 */',
+    ],
+    className: 'overlay-backdrop',
     onClick: event => {
-      if (mode === 'hidden') {
-        interact()
-      } else if (tapToHide && event.target.tagName !== 'BUTTON') {
-        // hide if tapping on elsewhere
-        hide()
+      if (event.target === event.currentTarget) {
+        onClick === null || onClick === void 0 ? void 0 : onClick()
       }
     },
-    onMouseMove: () => {
-      // In mobile web, emulated clicks generate extra mouse move events
-      if (!('ontouchstart' in window)) {
-        interact()
-      }
-    },
-  }
-}
-
-const blurPause = (media, pause) => {
-  const handleVisibilitychange = async () => {
-    let shouldPause = true
-    pause()
-    setTimeout(() => {
-      shouldPause = false
-    }, 50)
-    media.addEventListener(
-      'play',
-      () => {
-        if (shouldPause) {
-          pause()
-        }
-      },
-      {
-        once: true,
-      }
-    )
-  }
-
-  document.addEventListener('visibilitychange', handleVisibilitychange)
-  return () =>
-    document.removeEventListener('visibilitychange', handleVisibilitychange)
-}
+    ...rest,
+    children: open && children,
+  })
 
 /* @jsxImportSource @emotion/react */
 const iconStyle = {
@@ -4149,6 +2793,27 @@ const Error$1 = ({error, onBack}) => {
 Error$1.propTypes = {
   error: PropTypes.object,
   onBack: PropTypes.func,
+}
+
+/* eslint-disable react/prop-types */
+const extensionContext = /*#__PURE__*/ createContext()
+
+const SlotProvider = ({slotRef, children}) => {
+  const [slots, setSlots] = useState()
+  useEffect(() => {
+    setSlots(slotRef.current)
+  }, [])
+  return /*#__PURE__*/ jsx(extensionContext.Provider, {
+    value: slots,
+    children: children,
+  })
+}
+
+const FunctionBarExtension = ({children}) => {
+  const slots = useContext(extensionContext)
+  return slots !== null && slots !== void 0 && slots.functionBar
+    ? /*#__PURE__*/ createPortal(children, slots.functionBar)
+    : ''
 }
 
 function _EMOTION_STRINGIFIED_CSS_ERROR__$3() {
@@ -4913,6 +3578,18 @@ SimpleSlider.propTypes = {
   onChangeCommitted: PropTypes.func,
 }
 
+const formattedTime = sourceTime => {
+  const time = sourceTime >= 0 ? sourceTime : 0
+  const seconds = Math.floor(time % 60)
+    .toString()
+    .padStart(2, '0')
+  const minutes = Math.floor((time / 60) % 60)
+    .toString()
+    .padStart(2, '0')
+  const hours = time >= 3600 && Math.floor((time / 60 / 60) % 60).toString()
+  return [hours, minutes, seconds].filter(Boolean).join(':')
+}
+
 /* @jsxImportSource @emotion/react */
 const seekbarStyle = {
   position: 'relative',
@@ -5559,83 +4236,6 @@ const FairplayKeySystem = {
 
     return license
   },
-}
-
-const getConfig = (config, {host, widevine = {}, fairplay = {}}) => {
-  const widevineHeaders = {
-    ...config.headers,
-    ...(widevine === null || widevine === void 0 ? void 0 : widevine.headers),
-  }
-  const fairplayHeaders = {
-    ...config.headers,
-    ...(fairplay === null || fairplay === void 0 ? void 0 : fairplay.headers),
-  }
-  return {
-    widevine: {
-      LA_URL: host.widevine,
-      ...config,
-      headers: widevineHeaders,
-    },
-    fairplay: {
-      LA_URL: host.fairplay,
-      ...config,
-      headers: fairplayHeaders,
-      certificateURL: `${host.fairplay.replace(/\/$/, '')}/fairplay_cert`,
-      certificateHeaders: fairplay.certificateHeaders,
-      ...FairplayKeySystem,
-    },
-    playready: {
-      LA_URL: host.playready,
-      ...config,
-    },
-  }
-}
-/**
- * @param {object}
- * @param {object} .host
- * @param {string} .host.widevine
- * @param {string} .host.fairplay
- * @param {string} .host.playready
- * @param {string} .token
- * @param {object} .headers
- * @param {object} .widevine
- * @param {WidevineLevels} .widevine.level
- * @param {string[]} .widevine.blockedDevices Some devices doesn't play well
- * with hardware based Widevine, so don't enforce it
- */
-
-const getEnterpriseDrmConfig = ({host, token, headers = {}}) => {
-  const config = {
-    withCredentials: false,
-    headers: {
-      'X-Custom-Data': `token_type=playback&token_value=${token}`,
-      'X-Custom-Header': queryString(headers),
-    },
-  }
-  return getConfig(config, {
-    host,
-  })
-}
-
-const getBVKDrmConfig = ({host, token}) => {
-  const config = {
-    withCredentials: false,
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  }
-  const fairplay = {
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    certificateHeaders: {
-      Authorization: `Bearer ${token}`,
-    },
-  }
-  return getConfig(config, {
-    host,
-    fairplay,
-  })
 }
 
 const defaultCertificateUrl = url =>
@@ -6457,7 +5057,7 @@ const syncVolume = (video, setInitVolume) => {
     ) // eslint-disable-next-line no-empty
   } catch (e) {}
 
-  return on$1(video, 'volumechange', () => {
+  return on(video, 'volumechange', () => {
     localStorage.setItem(volumeStorageKey, video.volume)
   })
 }
@@ -6466,7 +5066,7 @@ const linkMediaVolume = getOptions => {
   const subscribe = handler => {
     const {video: media, setUnmuteVolume} = getOptions()
     setUnmuteVolume(media.volume)
-    on$1(media, 'volumechange', () =>
+    on(media, 'volumechange', () =>
       handler({
         volume: media.volume,
         muted: media.muted,
@@ -6693,7 +5293,7 @@ const ActiveSubtitles = ({player}) => {
 }
 
 /* eslint-disable no-param-reassign */
-const sizes$1 = {
+const sizes$2 = {
   'small-embed': 200,
   embed: 400,
   'tablet-portrait': 600,
@@ -6763,7 +5363,7 @@ const PremiumPlayer = ({
     observe,
   } = useDimensions({
     polyfill: ResizeObserver,
-    breakpoints: sizes$1,
+    breakpoints: sizes$2,
   })
   const [targetState, setTargetState] = useState(() => ({
     playbackState: autoplay ? 'playing' : 'paused',
@@ -7150,7 +5750,7 @@ const PremiumPlayer = ({
       onClick: () => toggleFullscreen(containerRef.current),
     }),
     volumeControl:
-      width >= sizes$1['small-embed'] &&
+      width >= sizes$2['small-embed'] &&
       /*#__PURE__*/ jsx(
         VolumeControl, // iOS video volume locks to 1, sliders is no use (OTP-1878)
         {
@@ -7289,7 +5889,928 @@ LiveEnd.propTypes = {
 }
 
 /* @jsxImportSource @emotion/react */
-const sizes = {
+const imageStyle = {
+  zIndex: 1,
+  position: 'absolute',
+  top: '50%',
+  left: '50%',
+  width: '100%',
+  height: '100%',
+  objectFit: 'contain',
+  transform: 'translate(-50%, -50%)',
+  background: '#000',
+}
+
+const CoverImage = ({src}) =>
+  jsx$1('img', {
+    alt: 'Cover',
+    css: imageStyle,
+    src: src,
+  })
+
+CoverImage.propTypes = {
+  src: PropTypes.string,
+}
+
+/* eslint-disable no-bitwise */
+const uuidv4 = () => {
+  const crypto = window.crypto || window.msCrypto
+  return '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, c =>
+    (
+      c ^
+      (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))
+    ).toString(16)
+  )
+}
+
+const modes = {
+  videos: 'video',
+  lives: 'live',
+}
+const logEventNames = {
+  playbackBegan: 'video_playback_began',
+  playbackStarted: 'video_playback_started',
+  playbackStopped: 'video_playback_stopped',
+  playbackEnded: 'video_playback_ended',
+  bufferingStarted: 'video_buffering_started',
+  bufferingEnded: 'video_buffering_ended',
+  seeked: 'video_seeking_ended',
+  playbackError: 'video_playback_error_occurred',
+  playing: 'play',
+  paused: 'pause',
+  rewind: 'rewind',
+  forward: 'forward',
+  previousEpisode: 'previous_episode',
+  nextEpisode: 'next_episode',
+  openSettings: 'setting_page_entered',
+  closeSettings: 'setting_page_exited',
+  adPlaybackStarted: 'ad_playback_started',
+  adPlaybackStopped: 'ad_playback_stopped',
+}
+
+const mapLogEvents = ({
+  video,
+  session = video,
+  version,
+  playerName,
+  getPlaybackStatus = () => video,
+}) => {
+  var _session$getContent
+
+  const emitter = mitt()
+  const state = {
+    status: 'init',
+    seeking: false,
+    playerStartTime: Date.now(),
+    moduleStartTime: Date.now(),
+    content:
+      ((_session$getContent = session.getContent) === null ||
+      _session$getContent === void 0
+        ? void 0
+        : _session$getContent.call(session)) || {},
+  }
+
+  const commonPropties = () => {
+    var _state$content$sectio
+
+    return {
+      player_name: playerName,
+      playback_module_version: version,
+      playback_mode: modes[state.content.type],
+      playback_session_id: state.sessionId,
+      id: state.content.id,
+      name: state.content.title,
+      ...(state.content.type === 'videos' && {
+        current_position: state.currentTime,
+        video_total_duration: state.duration,
+      }),
+      ...(state.content.type === 'lives' && {
+        section_id:
+          (_state$content$sectio = state.content.section) === null ||
+          _state$content$sectio === void 0
+            ? void 0
+            : _state$content$sectio.id,
+        name_2: state.content.channelName,
+      }),
+      SSAI: state.ssaiProvider || 'None',
+    }
+  }
+
+  const dispatchStart = () => {
+    if (state.status === 'started') {
+      return
+    }
+
+    state.status = 'started'
+    state.lastStartTime = Date.now()
+    const eventName = state.isPlayingAd
+      ? 'adPlaybackStarted'
+      : 'playbackStarted'
+    emitter.emit(eventName, commonPropties())
+  }
+
+  const dispatchStop = () => {
+    if (state.status !== 'started') {
+      return
+    }
+
+    state.status = 'stopped'
+    const played = (Date.now() - state.lastStartTime) / 1000
+
+    if (state.isPlayingAd) {
+      state.adPlayedDuration += played
+    } else {
+      state.playedDuration += played
+    }
+
+    const eventName = state.isPlayingAd
+      ? 'adPlaybackStopped'
+      : 'playbackStopped'
+    emitter.emit(eventName, {
+      ...commonPropties(),
+      ...(state.isPlayingAd && {
+        ad_played_duration: played,
+      }),
+    })
+  }
+
+  const registered = [
+    on(video, 'error', event => {
+      var _event$error, _event$error2, _event$error2$data
+
+      emitter.emit('playbackError', {
+        module_error_code:
+          ((_event$error = event.error) === null || _event$error === void 0
+            ? void 0
+            : _event$error.code) ||
+          ((_event$error2 = event.error) === null || _event$error2 === void 0
+            ? void 0
+            : (_event$error2$data = _event$error2.data) === null ||
+              _event$error2$data === void 0
+            ? void 0
+            : _event$error2$data.code),
+        ...commonPropties(),
+      })
+    }),
+    once(video, 'playerStarted', () => {
+      state.playerStartTime = Date.now()
+    }),
+    on(video, 'durationchange', () => {
+      // duration may change when playing an ad stitched stream, take only initial value
+      if (!state.duration) {
+        state.duration = getPlaybackStatus().duration
+      }
+    }),
+    once(video, 'canplay', () => {
+      state.status = 'began'
+      state.sessionId = uuidv4()
+      state.playedDuration = 0
+      emitter.emit('playbackBegan', {
+        player_startup_time:
+          (state.playerStartTime - state.moduleStartTime) / 1000,
+        video_startup_time: (Date.now() - state.moduleStartTime) / 1000,
+        ...commonPropties(),
+      })
+    }),
+    on(video, 'playing', dispatchStart),
+    on(video, 'waiting', () => {
+      if (!state.bufferingStartTime) {
+        emitter.emit('bufferingStarted', commonPropties())
+        state.bufferingStartTime = Date.now()
+      }
+    }),
+    on(video, 'timeupdate', () => {
+      state.currentTime = getPlaybackStatus().currentTime
+
+      if (state.bufferingStartTime) {
+        emitter.emit('bufferingEnded', {
+          buffering_second: (Date.now() - state.bufferingStartTime) / 1000,
+          ...commonPropties(),
+        })
+        state.bufferingStartTime = undefined
+      }
+    }),
+    on(video, 'pause', dispatchStop),
+    on(video, 'seeking', () => {
+      state.seekingFrom = state.currentTime
+    }),
+    on(session, 'userSeeking', () => {
+      state.seeking = true
+    }),
+    on(video, 'seeked', () => {
+      if (state.seeking) {
+        emitter.emit('seeked', {
+          seeking_from: state.seekingFrom,
+          seeking_to: video.currentTime,
+          ...commonPropties(),
+        })
+      }
+
+      state.seeking = false
+    }),
+    on(session, 'sectionChange', () => {
+      dispatchStop()
+      state.content = session.getContent()
+      dispatchStart()
+    }),
+    once(video, 'emptied', () => {
+      if (state.status === 'started') {
+        dispatchStop()
+      }
+
+      state.status = 'init'
+      emitter.emit('playbackEnded', {
+        video_playback_ended_at_percentage: state.currentTime / state.duration,
+        video_total_played_duration: state.playedDuration,
+        ...(state.ssaiProvider && {
+          ad_total_played_duration: state.adPlayedDuration,
+        }),
+        ...commonPropties(),
+      })
+    }),
+    once(video, 'loadedAdMetadata', event => {
+      state.ssaiProvider = event.data.provider
+      state.adPlayedDuration = 0
+    }),
+    on(session, 'adBreakStarted', () => {
+      dispatchStop()
+      state.isPlayingAd = true
+
+      if (!state.seeking) {
+        dispatchStart()
+      }
+    }),
+    on(session, 'adBreakEnded', () => {
+      dispatchStop()
+      state.isPlayingAd = false
+
+      if (!state.seeking) {
+        dispatchStart()
+      }
+    }),
+  ]
+  return {
+    addEventListener: (name, handler) => emitter.on(name, handler),
+    all: handler => emitter.on('*', handler),
+    emit: (name, {currentTime}) => {
+      emitter.emit(name, {
+        current_position: currentTime,
+        ...commonPropties(),
+      })
+    },
+    updateContent: content => {
+      state.content = content
+    },
+    reset: () => registered.forEach(off => off()),
+  }
+}
+
+const deepEqual = (current, updated) =>
+  JSON.stringify(current) === JSON.stringify(updated)
+
+const HEARTBEAT_INTERVAL_MS = 10000
+const UPDATE_INTERVAL_MS = 10000
+
+const startPlaybackSession = async (playbackApi, options = {}) => {
+  var _options$cache, _options$cache$get, _options$cache2, _options$cache2$get
+
+  const emitter = mitt()
+  const {type, id, getCurrentTime} = options
+  const {
+    onChangeContent,
+    onChangeStream,
+    onInvalidToken,
+    heartbeatTime = HEARTBEAT_INTERVAL_MS,
+    updateTime = UPDATE_INTERVAL_MS,
+  } = options
+  const state = {}
+
+  const updateContent = async contentInCache => {
+    const content =
+      !contentInCache || contentInCache.end_time * 1000 <= Date.now()
+        ? await playbackApi.getContent({
+            type,
+            id,
+          })
+        : contentInCache
+
+    if (!deepEqual(content, state.content)) {
+      state.content = content
+      onChangeContent === null || onChangeContent === void 0
+        ? void 0
+        : onChangeContent({
+            type,
+            ...content,
+            sources: state.sources,
+          })
+    }
+  } // get last playback time to start playback fast
+  // getContent is not critical, so don't block playback if it hangs or fails(ignored in API logic)
+
+  const loadContent = Promise.race([
+    updateContent(
+      (_options$cache = options.cache) === null || _options$cache === void 0
+        ? void 0
+        : (_options$cache$get = _options$cache.get(`${type}/${id}`)) === null ||
+          _options$cache$get === void 0
+        ? void 0
+        : _options$cache$get.content
+    ),
+    new Promise(resolve => {
+      setTimeout(resolve, UPDATE_INTERVAL_MS)
+    }),
+  ])
+  const sessionInfo = await playbackApi.startPlayback({
+    type,
+    id,
+  })
+  const requestParams = {
+    type,
+    id,
+    token: sessionInfo.token,
+  }
+  state.sources = (
+    ((_options$cache2 = options.cache) === null || _options$cache2 === void 0
+      ? void 0
+      : (_options$cache2$get = _options$cache2.get(`${type}/${id}`)) === null ||
+        _options$cache2$get === void 0
+      ? void 0
+      : _options$cache2$get.playbackInfo) ||
+    (await playbackApi.getPlaybackInfo(requestParams))
+  ).sources
+  onChangeStream === null || onChangeStream === void 0
+    ? void 0
+    : onChangeStream({
+        type,
+        ...state,
+      })
+  let updateIntervalId
+
+  if (type === 'lives') {
+    updateIntervalId = setInterval(updateContent, updateTime)
+  }
+
+  let lastPlayedTime
+
+  const updateLastPlayed = () => {
+    const currentTime =
+      getCurrentTime === null || getCurrentTime === void 0
+        ? void 0
+        : getCurrentTime()
+
+    if (currentTime >= 0 && lastPlayedTime !== currentTime) {
+      lastPlayedTime = currentTime
+      playbackApi.updateLastPlayed({...requestParams, time: currentTime})
+    }
+  }
+
+  if (type === 'videos') {
+    updateIntervalId = setInterval(updateLastPlayed, updateTime)
+  }
+
+  const heartbeatIntervalId = setInterval(
+    () =>
+      playbackApi.heartbeat(requestParams).catch(error => {
+        var _error$response
+
+        if (
+          /4\d\d/.test(
+            (_error$response = error.response) === null ||
+              _error$response === void 0
+              ? void 0
+              : _error$response.status
+          )
+        ) {
+          clearInterval(heartbeatIntervalId)
+          onInvalidToken === null || onInvalidToken === void 0
+            ? void 0
+            : onInvalidToken(error)
+        }
+      }),
+    heartbeatTime
+  )
+
+  const end = () => {
+    updateLastPlayed()
+    clearInterval(updateIntervalId)
+    clearInterval(heartbeatIntervalId)
+    emitter.emit('playbackEnded')
+    return playbackApi.endPlayback(requestParams)
+  }
+
+  await loadContent
+  return {
+    ...state,
+    token: sessionInfo.token,
+    drmPortalUrl: sessionInfo.drm_portal_url,
+    updateLastPlayed,
+    end,
+  }
+}
+
+const preload = (
+  playbackApi,
+  preloadList,
+  currentContent,
+  cache,
+  options = {}
+) => {
+  const {updateTime = 10000} = options
+
+  const fetchData = () => {
+    preloadList.forEach(async ({contentType: type, contentId: id}) => {
+      var _cache$get, _cache$get$content
+
+      if (id === currentContent.id && type === currentContent.type) return
+      const endTime =
+        (_cache$get = cache.get(`${type}/${id}`)) === null ||
+        _cache$get === void 0
+          ? void 0
+          : (_cache$get$content = _cache$get.content) === null ||
+            _cache$get$content === void 0
+          ? void 0
+          : _cache$get$content.end_time
+      if (typeof endTime === 'number' && endTime * 1000 >= Date.now()) return
+
+      try {
+        const {token} = await playbackApi.startPlayback({
+          type,
+          id,
+        })
+        const waitForContent = playbackApi.getContent({
+          type,
+          id,
+        })
+        const waitForPlaybackInfo = playbackApi.getPlaybackInfo({
+          type,
+          id,
+          token,
+        })
+        const [content, playbackInfo] = await Promise.all([
+          waitForContent,
+          waitForPlaybackInfo,
+        ])
+        cache.set(`${type}/${id}`, {
+          content,
+          playbackInfo,
+        })
+        playbackApi.endPlayback({
+          type,
+          id,
+          token,
+        })
+      } catch (e) {
+        console.error(e)
+      }
+    })
+  }
+
+  fetchData()
+  const fetchDataIntervalID = setInterval(fetchData, updateTime)
+  return () => clearInterval(fetchDataIntervalID)
+}
+
+const getSourceTypeSettings = sources => {
+  if (
+    !((sources === null || sources === void 0 ? void 0 : sources.length) > 1)
+  ) {
+    return
+  }
+
+  const items = sources.map(source => ({
+    value: source.type,
+    label: source.type.toUpperCase(),
+  }))
+
+  const getDefault = preferred =>
+    (items.find(item => item.value === preferred) || items[0] || {}).value
+
+  return {
+    name: 'source-type',
+    title: 'KKS.SETTING.VERSION',
+    items,
+    getDefault,
+  }
+}
+
+/* eslint-disable no-param-reassign */
+
+const waitMs = time =>
+  new Promise(resolve => {
+    setTimeout(resolve, time)
+  })
+
+const handleRequestError = (result, {onError, retryTimes = 0}) =>
+  result.catch(error =>
+    onError(error, {
+      retry: () =>
+        handleRequestError(axios(error.config), {
+          onError,
+          retryTimes: retryTimes + 1,
+        }),
+      retryTimes,
+    })
+  )
+
+const ignoreMinorError = async (event, {retry, retryTimes} = {}) => {
+  var _event$response, _event$response2, _event$config
+
+  console.warn(event)
+
+  if (
+    (((_event$response = event.response) === null || _event$response === void 0
+      ? void 0
+      : _event$response.message) === 'Network Error' ||
+      /502|503/.test(
+        (_event$response2 = event.response) === null ||
+          _event$response2 === void 0
+          ? void 0
+          : _event$response2.status
+      )) &&
+    retryTimes < 3
+  ) {
+    await waitMs(3000)
+    return retry()
+  }
+
+  if (
+    /start$|info$|heartbeat$/.test(
+      (_event$config = event.config) === null || _event$config === void 0
+        ? void 0
+        : _event$config.url
+    )
+  ) {
+    return Promise.reject(event)
+  }
+
+  console.log('Ignore non-critical playback API fail', event)
+  return new Promise(() => {})
+}
+
+const createApi = (
+  {host, accessToken, deviceId, headers, params},
+  {onError = ignoreMinorError} = {}
+) => {
+  const getHeaders = () => ({
+    ...(accessToken && {
+      Authorization: accessToken,
+    }),
+    ...(deviceId && {
+      'X-Device-ID': deviceId,
+    }),
+    'Content-type': 'application/json',
+    ...headers,
+  })
+
+  const request = (url, {method} = {}) =>
+    handleRequestError(
+      axios(url, {
+        method,
+        headers: getHeaders(),
+        params,
+      }),
+      {
+        onError,
+      }
+    ).then(response => response.data)
+
+  const sessionRequest = (path, {method = 'POST', type, id, token}) =>
+    handleRequestError(
+      axios(`${host}/sessions/${type}/${id}/playback/${deviceId}/${path}`, {
+        method,
+        headers: getHeaders(),
+        params: {...params, playback_token: token},
+      }),
+      {
+        onError,
+      }
+    ).then(response => response.data)
+
+  return {
+    getContent: ({type, id}) => request(`${host}/${type}/${id}`, {}),
+    startPlayback: ({type, id}) =>
+      request(`${host}/sessions/${type}/${id}/playback/${deviceId}/start`, {
+        method: 'POST',
+      }),
+    getPlaybackInfo: ({type, id, token}) =>
+      sessionRequest('info', {
+        method: 'GET',
+        type,
+        id,
+        token,
+      }),
+    heartbeat: ({type, id, token}) =>
+      sessionRequest('heartbeat', {
+        type,
+        id,
+        token,
+      }),
+    updateLastPlayed: ({type, id, token, time}) =>
+      sessionRequest(`position/${Math.floor(time)}`, {
+        type,
+        id,
+        token,
+      }),
+    endPlayback: ({type, id, token}) =>
+      sessionRequest('end', {
+        type,
+        id,
+        token,
+      }),
+  }
+}
+
+const getStreamInfo = (sources = [], type = '') => {
+  const activeSource =
+    sources.find(source => source.type === type) || sources[0]
+  return (
+    (activeSource === null || activeSource === void 0
+      ? void 0
+      : activeSource.manifests) || []
+  ).reduce(
+    (data, manifest) => {
+      const {url, ...info} = manifest
+      data.source[manifest.protocol] = url // SSAI plugins need manifest.ssai, and for other extra data
+
+      data.source.info[manifest.protocol] = info
+      data.quality[manifest.protocol] = info.resolutions.map(({height}) => ({
+        label: height,
+        value: height,
+        options: {
+          maxHeight: height,
+        },
+      }))
+      return data
+    },
+    {
+      source: {
+        info: {},
+      },
+      quality: {},
+      thumbnailsUrl:
+        activeSource === null || activeSource === void 0
+          ? void 0
+          : activeSource.thumbnail_seeking_url,
+    }
+  )
+}
+
+const getContentInfo = data => {
+  var _data$time, _data$time2
+
+  return {
+    title: data.title,
+    channelTitle: data.subtitle,
+    end: data.end,
+    section: {
+      id: data.section_id,
+      start: data.start_time,
+      end: data.end_time,
+    },
+    previous: data.prev_video,
+    next: data.next_video,
+    startTime:
+      (_data$time = data.time) === null || _data$time === void 0
+        ? void 0
+        : _data$time.last_position,
+    chapters: [
+      ((_data$time2 = data.time) === null || _data$time2 === void 0
+        ? void 0
+        : _data$time2.end_start_position) && {
+        type: 'ending',
+        start: data.time.end_start_position,
+      },
+    ].filter(Boolean),
+  }
+}
+
+const getChannelTime = ({start, end}) => {
+  const duration = end - start
+  const nowSecond = Math.floor(Date.now() / 1000)
+  const currentTime = Math.max(0, Math.min(nowSecond - start, duration))
+  return {
+    currentTime,
+    duration,
+  }
+}
+
+const LinearTimeRewrite = () => {
+  const state = {}
+  return {
+    getPlaybackStatus: () => {
+      const timeInfo = getChannelTime(state)
+      return (
+        (timeInfo === null || timeInfo === void 0
+          ? void 0
+          : timeInfo.duration) > 0 && timeInfo
+      )
+    },
+    handleSectionChange: section => Object.assign(state, section),
+  }
+}
+
+const linkPluginEvents = (plugins, handlers) => {
+  const registered = plugins.map(plugin =>
+    Object.entries(handlers).map(([eventName, handler]) => {
+      var _plugin$on
+
+      return (_plugin$on = plugin.on) === null || _plugin$on === void 0
+        ? void 0
+        : _plugin$on.call(plugin, eventName, event => handler(event, plugin))
+    })
+  )
+  return () =>
+    []
+      .concat(...registered)
+      .forEach(removeListener =>
+        removeListener === null || removeListener === void 0
+          ? void 0
+          : removeListener()
+      )
+}
+
+const type = {
+  SELECT_MEDIA_SOURCE: 'UI_SELECT_MEDIA_SOURCE',
+  SET_MEDIA_SOURCES: 'UI_SET_MEDIA_SOURCES',
+  CHANGE_RECOMMENDATION_PANEL: 'CHANGE_RECOMMENDATION_PANEL',
+  TOGGLE_RECOMMENDATION_PANEL: 'TOGGLE_RECOMMENDATION_PANEL',
+  OPEN_PANEL: 'OPEN_PANEL',
+  HIDE_PANEL: 'HIDE_PANEL',
+  OFFER_AUTOPLAY: 'OFFER_AUTOPLAY',
+  DISMISS_AUTOPLAY: 'DISMISS_AUTOPLAY',
+  ERROR: 'UI_ERROR',
+  RESET_END_ROLL: 'RESET_END_ROLL',
+  STREAM_EVENTS_CHANGED: 'STREAM_EVENTS_CHANGED',
+  AD_BREAK_STARTED: 'AD_BREAK_STARTED',
+  AD_BREAK_ENDED: 'AD_BREAK_ENDED',
+  VISIBILITY_CHANGE: 'VISIBILITY_CHANGE',
+  PLAYBACK_END: 'PLAYBACK_END',
+}
+var uiActions = {
+  selectMediaSource: mediaSource => ({
+    type: type.SELECT_MEDIA_SOURCE,
+    mediaSource,
+  }),
+  setMediaSources: (items = []) => ({
+    type: type.SET_MEDIA_SOURCES,
+    items,
+  }),
+  enableRecommendationPanel: () => ({
+    type: type.CHANGE_RECOMMENDATION_PANEL,
+    enabled: true,
+  }),
+  disableRecommendationPanel: () => ({
+    type: type.CHANGE_RECOMMENDATION_PANEL,
+    enabled: false,
+  }),
+  toggleRecommendationPanel: () => ({
+    type: type.TOGGLE_RECOMMENDATION_PANEL,
+  }),
+  openPanel: panel => ({
+    type: type.OPEN_PANEL,
+    panel,
+  }),
+  hidePanel: () => ({
+    type: type.HIDE_PANEL,
+  }),
+  offerAutoplay: state => ({
+    type: type.OFFER_AUTOPLAY,
+    endState: state,
+  }),
+  dismissAutoplay: () => ({
+    type: type.DISMISS_AUTOPLAY,
+  }),
+  streamEventsChanged: (streamEvents, playbackStatus) => ({
+    type: type.STREAM_EVENTS_CHANGED,
+    streamEvents,
+    playbackStatus,
+  }),
+  adBreakStarted: (adProgressData, skipTimeOffset) => ({
+    type: type.AD_BREAK_STARTED,
+    adProgressData,
+    skipTimeOffset,
+  }),
+  adBreakEnded: () => ({
+    type: type.AD_BREAK_ENDED,
+  }),
+  playbackEnd: () => ({
+    type: type.PLAYBACK_END,
+  }),
+}
+
+/* eslint-disable react/prop-types */
+
+const linkAdState = ({contentType, dispatch, plugins}) => {
+  const handleStart = event => {
+    var _event$getAd
+
+    // TODO playlog ad start event
+    dispatch(
+      uiActions.adBreakStarted(
+        event.getStreamData().adProgressData,
+        contentType !== 'lives' &&
+          ((_event$getAd = event.getAd()) === null || _event$getAd === void 0
+            ? void 0
+            : _event$getAd.getSkipTimeOffset())
+      )
+    )
+  }
+
+  return linkPluginEvents(plugins, {
+    cuepointsChanged: (event, plugin) =>
+      dispatch(
+        uiActions.streamEventsChanged(
+          event.cuepoints,
+          plugin.getPlaybackStatus()
+        )
+      ),
+    adBreakStarted: handleStart,
+    adBreakEnded: () => {
+      // TODO playlog ad end event
+      dispatch(uiActions.adBreakEnded())
+    },
+  })
+}
+
+const useIntervalUpdate = get => {
+  const [value, setValue] = useState(0)
+  useEffect(() => {
+    const intervalId = setInterval(() => setValue(get()), 500)
+    return () => clearInterval(intervalId)
+  }, [])
+  return value
+}
+
+const SkipAdButton = ({skipAd, getWaitTime}) => {
+  const waitTime = useIntervalUpdate(getWaitTime)
+  return (
+    isFinite(waitTime) &&
+    /*#__PURE__*/ jsx(SkipButton, {
+      waitTime: waitTime,
+      onClick: skipAd,
+    })
+  )
+}
+
+const Status = ({total, position, getRemainingTime}) => {
+  const remainingTime = useIntervalUpdate(getRemainingTime)
+  return (
+    total > 0 && `Ad ${position} of ${total}・${formattedTime(remainingTime)}`
+  )
+}
+
+const mergeAdUi = (
+  uiElements,
+  {position, total, adBreakDuration, skipTimeOffset, clickThroughUrl},
+  plugins,
+  media
+) => {
+  const getRemainingTime = () => getMediaTime(media, plugins).adRemainingTime
+
+  const getSkipWaitTime = () =>
+    skipTimeOffset >= 0
+      ? getRemainingTime() - (adBreakDuration - skipTimeOffset)
+      : Infinity
+
+  return {
+    title: '',
+    channelTitle: '',
+    controlButtons: {
+      playButton: uiElements.controlButtons.playButton,
+    },
+    seekbar: '',
+    adLink:
+      clickThroughUrl &&
+      /*#__PURE__*/ jsx('a', {
+        href: clickThroughUrl,
+        rel: 'noreferrer',
+        target: '_blank',
+        children: /*#__PURE__*/ jsx(FormattedMessage, {
+          id: 'KKS.SSAI.LEARN.MORE',
+        }),
+      }),
+    adStatus: /*#__PURE__*/ jsx(Status, {
+      position: position,
+      total: total,
+      getRemainingTime: getRemainingTime,
+    }),
+    adSkipButton: /*#__PURE__*/ jsx(SkipAdButton, {
+      getWaitTime: getSkipWaitTime,
+      skipAd: () =>
+        plugins.forEach(plugin => {
+          var _plugin$skipAd
+
+          return (_plugin$skipAd = plugin.skipAd) === null ||
+            _plugin$skipAd === void 0
+            ? void 0
+            : _plugin$skipAd.call(plugin)
+        }),
+    }),
+  }
+}
+
+/* @jsxImportSource @emotion/react */
+const sizes$1 = {
   normal: {
     bottom: '1rem',
     padding: '0.5rem',
@@ -7376,7 +6897,7 @@ const PlayDialog = ({
   return jsxs('div', {
     css: [
       style$3.container,
-      sizes[size],
+      sizes$1[size],
       opening && style$3.opening,
       process.env.NODE_ENV === 'production' ? '' : ';label:PlayDialog;',
       process.env.NODE_ENV === 'production'
@@ -7472,7 +6993,7 @@ const AutoplayPrompt = ({
     updateChapter({
       endStart,
     })
-    return on$1(videoRef.current, 'timeupdate', () =>
+    return on(videoRef.current, 'timeupdate', () =>
       updateChapter({
         endStart,
       })
@@ -7521,30 +7042,6 @@ const AutoplayPrompt = ({
     play: playNext,
     dismiss: () => setDismissedAt(endStatus),
   })
-}
-
-/* @jsxImportSource @emotion/react */
-const imageStyle = {
-  zIndex: 1,
-  position: 'absolute',
-  top: '50%',
-  left: '50%',
-  width: '100%',
-  height: '100%',
-  objectFit: 'contain',
-  transform: 'translate(-50%, -50%)',
-  background: '#000',
-}
-
-const CoverImage = ({src}) =>
-  jsx$1('img', {
-    alt: 'Cover',
-    css: imageStyle,
-    src: src,
-  })
-
-CoverImage.propTypes = {
-  src: PropTypes.string,
 }
 
 const openIcon = {
@@ -8200,1183 +7697,6 @@ PremiumPlusPlayer.propTypes = {
   sendLog: PropTypes.func,
 }
 
-/* eslint-disable react/prop-types */
-
-const dispatchError = (element, error) =>
-  element.dispatchEvent(
-    Object.assign(new CustomEvent('error'), {
-      error,
-    })
-  ) // eslint-disable-next-line react/display-name
-
-const Player = /*#__PURE__*/ forwardRef(
-  (
-    {
-      licenseKey,
-      config: {basePlayer, ...config$1} = {
-        basePlayer: 'bitmovin',
-        ...config.BitmovinConfig,
-      },
-      host,
-      accessToken,
-      deviceId,
-      content,
-      customHeader: headers = {},
-      customQuery: params = {},
-      lang: locale = LanguageCode$1.EN,
-      langCustomCode: messages = {},
-      preload = 'auto',
-      autoPlay,
-      autoPlayNext,
-      autoplay = autoPlay,
-      autoplayNext = autoPlayNext,
-      startTime,
-      quality,
-      thumbnailSeeking,
-      supportEnvironmentList: environmentAllowList,
-      limitOnePlaybackAtSameTime: denyMultiTab,
-      recommendation,
-      toolPanels = [],
-      coverImageUrl,
-      plugins = [],
-      sentry = {},
-      preloadList = [],
-      onBack,
-      onChangeVideo,
-      onClickSettingButton,
-      onLogging,
-      children,
-    },
-    ref
-  ) => {
-    const basePlayerConfig =
-      basePlayer === 'shaka'
-        ? {
-            shaka: config$1,
-          }
-        : basePlayer === 'bitmovin'
-        ? {
-            bitmovin: {
-              key: licenseKey,
-              ...config$1,
-            },
-          }
-        : {}
-    useEffect(() => {
-      if (sentry.key || undefined) {
-        addSentry({...sentry, key: sentry.key || undefined})
-      }
-    }, [])
-    useEffect(() => {
-      const envError = validateEnvironment(environmentAllowList)
-
-      if (envError) {
-        dispatchError(ref.current.getVideo(), {
-          name: envError.name,
-          data: envError,
-        })
-      }
-
-      if (denyMultiTab) {
-        const revokeLock = ensureTabLock()
-
-        if (!revokeLock) {
-          dispatchError(ref.current.getVideo(), {
-            name: 'PlaycraftApiError',
-            code: 1002,
-          })
-        }
-
-        return revokeLock
-      }
-    }, [])
-    return jsxs(PremiumPlusPlayer, {
-      ...basePlayerConfig,
-      currentTime: startTime,
-      preload: preload,
-      autoplay: autoplay,
-      quality: quality.qualitySelectionHack
-        ? {
-            rewriteManifest: selectHlsQualities,
-          }
-        : {},
-      plugins: plugins,
-      playerRef: ref,
-      intl: {
-        locale,
-        messages,
-      },
-      host: host,
-      accessToken: accessToken,
-      deviceId: deviceId,
-      headers: headers,
-      params: params,
-      contentType: content.contentType,
-      contentId: content.contentId,
-      autoplayNext: autoplayNext,
-      thumbnailSeeking: thumbnailSeeking,
-      coverImageUrl: coverImageUrl,
-      recommendation: recommendation,
-      preloadList: preloadList,
-      onBack: onBack,
-      onChange: content =>
-        onChangeVideo({
-          videoId: content.id,
-        }),
-      onOpenSettings: onClickSettingButton,
-      onLogging: onLogging,
-      children: [
-        children,
-        toolPanels.map(
-          (
-            {
-              content,
-              button,
-              open,
-              style,
-              hasBackdrop = true,
-              pinned = false,
-              foldedHeight = 0,
-              onClose,
-            },
-            index
-          ) =>
-            jsx$1(
-              BottomPanel,
-              {
-                open: open,
-                style: style,
-                backdrop: hasBackdrop,
-                pinned: pinned,
-                minimizedHeight: foldedHeight,
-                button: button,
-                onClose: onClose,
-                children: content,
-              },
-              index
-            )
-        ),
-      ],
-    })
-  }
-)
-Player.propTypes = {
-  licenseKey: PropTypes.string.isRequired,
-  host: PropTypes.string,
-  accessToken: PropTypes.string,
-  deviceId: PropTypes.string,
-  content: Types.VideoInfo,
-  lang: Types.LanguageCode,
-  langCustomCode: PropTypes.object,
-  customHeader: PropTypes.object,
-  customQuery: PropTypes.object,
-  thumbnailSeeking: PropTypes.bool,
-  limitOnePlaybackAtSameTime: PropTypes.bool,
-  preload: PropTypes.oneOf(['auto', 'none']),
-  autoplay: PropTypes.bool,
-  autoplayNext: PropTypes.bool,
-  startTime: PropTypes.number,
-  quality: PropTypes.object,
-  mediaSource: PropTypes.string,
-  supportEnvironmentList: PropTypes.arrayOf(Types.SupportEnvironmentItem),
-  config: PropTypes.object,
-  toolPanels: PropTypes.array,
-  recommendation: PropTypes.oneOfType([PropTypes.object, PropTypes.bool]),
-  coverImageUrl: PropTypes.string,
-  widevine: PropTypes.string,
-  plugins: PropTypes.array,
-  sentry: PropTypes.object,
-  onError: PropTypes.func,
-  onSourceLoaded: PropTypes.func,
-  onReady: PropTypes.func,
-  onPlay: PropTypes.func,
-  onPlaying: PropTypes.func,
-  onSeek: PropTypes.func,
-  onSeeked: PropTypes.func,
-  onPaused: PropTypes.func,
-  onTimeChanged: PropTypes.func,
-  onVolumeChanged: PropTypes.func,
-  onMuted: PropTypes.func,
-  onUnmuted: PropTypes.func,
-  onStallStarted: PropTypes.func,
-  onStallEnded: PropTypes.func,
-  onReplay: PropTypes.func,
-  onVideoQualityChanged: PropTypes.func,
-  onMediaSourceChanged: PropTypes.func,
-  onEnded: PropTypes.func,
-  onEnterFullscreen: PropTypes.func,
-  onExitFullscreen: PropTypes.func,
-  onViewModeChange: PropTypes.func,
-  onChangeVideo: PropTypes.func,
-  onChangeToNextVideo: PropTypes.func,
-  onChangeToPreviousVideo: PropTypes.func,
-  onClickSettingButton: PropTypes.func,
-  onBack: PropTypes.func,
-  onSectionChange: PropTypes.func,
-  onSourceUnloaded: PropTypes.func,
-  onLogging: PropTypes.func,
-}
-
-/** @param {string} m3u8Manifest */
-const getManifestUrl = ({url, data}) => {
-  const lines = data.split('\n')
-  const i = lines.findIndex(line => line.startsWith('#EXT-X-STREAM-INF'))
-  return i >= 0 ? new URL(lines[i + 1], url) : ''
-}
-/** @param {string} url */
-
-const fetchManifests = async url => {
-  if (!url.toString().split('?')[0].endsWith('.m3u8')) {
-    return fetch(url)
-  }
-
-  const data = await fetch(url).then(result => result.text())
-  const innerUrl = getManifestUrl({
-    url,
-    data,
-  })
-  return innerUrl && fetchManifests(innerUrl)
-}
-
-/* eslint-disable class-methods-use-this */
-
-/* eslint-disable no-underscore-dangle */
-const _IsNumber = value => typeof value === 'number' && value >= 0
-
-const AD_TIME_EVENT_TYPE = [
-  'impression',
-  'start',
-  'firstQuartile',
-  'midpoint',
-  'thirdQuartile',
-  'complete',
-]
-
-const doNothing = () => {}
-
-const getSkipTimeOffset = ad => {
-  var _ad$skipOffset, _ad$skipOffset$match, _ad$skipOffset2
-
-  if (!ad.skipOffset) {
-    return
-  }
-
-  const percentageOffset =
-    (((_ad$skipOffset = ad.skipOffset) === null || _ad$skipOffset === void 0
-      ? void 0
-      : (_ad$skipOffset$match = _ad$skipOffset.match(/\d+/)) === null ||
-        _ad$skipOffset$match === void 0
-      ? void 0
-      : _ad$skipOffset$match[0]) || 0) / 100 // 00:01:07 -> 67
-
-  const timeOffset = (
-    ((_ad$skipOffset2 = ad.skipOffset) === null || _ad$skipOffset2 === void 0
-      ? void 0
-      : _ad$skipOffset2.match(/(\d+):(\d+):(\d+)/)) || []
-  )
-    .slice(1, 4)
-    .reduce((last, time) => last * 60 + +time, 0)
-  return timeOffset + ad.durationInSeconds * percentageOffset
-}
-
-const inRange = ({startTimeInSeconds, durationInSeconds}, time) =>
-  startTimeInSeconds <= time && time <= startTimeInSeconds + durationInSeconds
-
-const getCurrentAd = (adBreak, streamTime) =>
-  ((adBreak === null || adBreak === void 0 ? void 0 : adBreak.ads) || []).find(
-    ad => inRange(ad, streamTime)
-  ) || {}
-
-const adEventData = (instance, ad) => {
-  const streamTime = instance._common.currentPosition
-  const currentAd = getCurrentAd(ad, streamTime)
-  return {
-    getAd: () => ({
-      getSkipTimeOffset: () => getSkipTimeOffset(currentAd),
-    }),
-    getStreamData: () => {
-      var _currentAd$trackingEv, _currentAd$trackingEv2
-
-      const adItems = [].concat(
-        ...instance.waitingForPlayAds.map(avail => avail.ads)
-      )
-      const adPosition =
-        1 + adItems.findIndex(item => inRange(item, streamTime))
-      const adProgressData = {
-        adPosition,
-        totalAds: adItems.length,
-        currentTime: streamTime - currentAd.startTimeInSeconds,
-        duration: currentAd.durationInSeconds,
-        clickThroughUrl:
-          (_currentAd$trackingEv = currentAd.trackingEvents) === null ||
-          _currentAd$trackingEv === void 0
-            ? void 0
-            : (_currentAd$trackingEv2 = _currentAd$trackingEv.find(
-                event => event.eventType === 'clickThrough'
-              )) === null || _currentAd$trackingEv2 === void 0
-            ? void 0
-            : _currentAd$trackingEv2.beaconUrls[0],
-      }
-      return {
-        adProgressData,
-      }
-    },
-  }
-}
-
-class Impression {
-  constructor({
-    seek,
-    onAdBreakStarted = doNothing,
-    onAdProgress = doNothing,
-    onAdBreakEnded = doNothing,
-    onSkippableStateChanged = doNothing,
-  } = {}) {
-    this._common = {
-      adBreaks: [],
-      currentPosition: -1,
-      seek,
-      onAdBreakStarted,
-      onAdProgress,
-      onSkippableStateChanged,
-      onAdBreakEnded,
-    }
-    this.currentAd = null
-    this.waitingForPlayAds = []
-    this.waitingForPlayAdIndex = null
-    this.resumeUserSeekTime = null
-    this.resumeAdStartTime = null
-    this.isResumed = null
-    this.checkAdEventProcess = null
-  }
-  /**
-   * @description
-   * @param {object[]} value
-   */
-
-  set adBreaks(value) {
-    this._common.adBreaks = value
-    if (_IsNumber(value.length)) this.checkAdCueTone()
-  }
-  /**
-   * @description when position is updated, check if ad is started or ended
-   * @param {number} value current position in seconds
-   */
-
-  set currentPosition(value) {
-    this._common.currentPosition = value
-    if (_IsNumber(this._common.adBreaks.length)) this.checkAdCueTone()
-  } // TODO: send ad status (current ad index, count, total duration)
-
-  getAdIndex(target) {
-    if (!target) return null
-    return this._common.adBreaks.findIndex(ad => ad.availId === target.availId)
-  } // 取得播放時間是在哪個廣告區間
-
-  getActiveAdIndex(time) {
-    var _adBreaks$index
-
-    const {adBreaks = []} = this._common
-    const index = adBreaks.findIndex(ad => {
-      const {startTime, endTime} = this.getAdTimingInfo(ad)
-      return time >= startTime && time <= endTime
-    })
-    const position = (
-      ((_adBreaks$index = adBreaks[index]) === null ||
-      _adBreaks$index === void 0
-        ? void 0
-        : _adBreaks$index.ads) || []
-    ).findIndex(ad => inRange(ad, time))
-    return {
-      index,
-      position,
-    }
-  } // 檢查播放時間是否在所提供的區間
-
-  isWithinTimeRange(target, startTime, endTime) {
-    return target >= startTime && target <= endTime
-  } // 取得該廣告的起始/結束時間
-
-  getAdTimingInfo(adInfo = {}) {
-    const adStartTime = adInfo.startTimeInSeconds || 0
-    const adDuration = adInfo.durationInSeconds || 0
-    return {
-      startTime: adStartTime,
-      endTime: adStartTime + adDuration,
-    }
-  } // 取得跳過的廣告
-
-  getSkippedAds(time) {
-    return this._common.adBreaks.filter(
-      ad =>
-        this._common.currentPosition <= ad.startTimeInSeconds &&
-        ad.startTimeInSeconds <= time &&
-        !ad.isFired
-    )
-  }
-
-  setAdIsFiredByIndex() {}
-
-  checkAdCueTone() {
-    const {adBreaks, currentPosition, seek} = this._common
-    const {index: activeAdIndex, position} =
-      this.getActiveAdIndex(currentPosition)
-
-    if (this.currentAd) {
-      if (!this.checkAdEventProcess) {
-        this.checkAdEventProcess = this.checkAdEvent()
-      }
-
-      this.checkAdEventProcess({
-        index: activeAdIndex,
-        position,
-      })
-    }
-
-    if (this.waitingForPlayAds.length > 0) {
-      const {startTime: currentAdStartTime, endTime: currentAdEndTime} =
-        this.getAdTimingInfo(this.currentAd)
-      const isAdStillPlaying = this.isWithinTimeRange(
-        currentPosition,
-        currentAdStartTime,
-        currentAdEndTime
-      )
-
-      if (!isAdStillPlaying) {
-        // Ad finished
-        const nextAd =
-          this.waitingForPlayAds[`${this.waitingForPlayAdIndex + 1}`]
-        if (
-          currentPosition <
-          this.currentAd.startTimeInSeconds + this.currentAd.durationInSeconds
-        )
-          return
-
-        if (nextAd) {
-          // have non-played & skipped Ad
-          const adIndex = this.getAdIndex(this.currentAd)
-          const {startTime: nextAdStartTime} = this.getAdTimingInfo(nextAd)
-          this.setAdIsFiredByIndex(adIndex)
-          this.updateWaitingForPlayIndex(this.waitingForPlayAdIndex + 1)
-          this.updateCurrentAd(nextAd)
-          seek === null || seek === void 0 ? void 0 : seek(nextAdStartTime)
-        } else {
-          // don't have non-played Ad
-          const adIndex = this.getAdIndex(this.currentAd)
-          this.setAdIsFiredByIndex(adIndex)
-          this.updateWaitingForPlayAds([])
-          this.updateWaitingForPlayIndex(null)
-          this.updateCurrentAd(null)
-          _IsNumber(this.resumeUserSeekTime) &&
-            (seek === null || seek === void 0
-              ? void 0
-              : seek(this.resumeUserSeekTime))
-          this.resumeUserSeekTime = null
-        }
-      }
-    } else if (activeAdIndex !== -1) {
-      if (!adBreaks[activeAdIndex].isFired) {
-        this.updateWaitingForPlayIndex(0)
-        this.updateWaitingForPlayAds(
-          adBreaks.slice(activeAdIndex, activeAdIndex + 1)
-        )
-        this.updateCurrentAd(adBreaks[activeAdIndex])
-      } else {
-        // in Ad duration but Ad was played
-        this.updateCurrentAd(adBreaks[`${activeAdIndex}`] || {})
-      }
-    } else {
-      // not in Ad duration
-      this.updateCurrentAd(null)
-    }
-  }
-
-  checkAdEvent() {
-    const state = {
-      lastPosition: undefined,
-      isSkippableEventFired: false,
-    }
-    return ({index, position}) => {
-      var _currentAd$trackingEv3, _currentAd$trackingEv4
-
-      const streamTime = this._common.currentPosition
-      const currentBreak = this._common.adBreaks[index]
-      const currentAd =
-        currentBreak === null || currentBreak === void 0
-          ? void 0
-          : currentBreak.ads[position]
-
-      if (!currentAd) {
-        return
-      }
-
-      if (position !== state.lastPosition) {
-        var _this$_common$onAdPro, _this$_common
-
-        ;(_this$_common$onAdPro = (_this$_common = this._common)
-          .onAdProgress) === null || _this$_common$onAdPro === void 0
-          ? void 0
-          : _this$_common$onAdPro.call(
-              _this$_common,
-              adEventData(this, currentBreak)
-            )
-        Object.assign(state, {
-          lastPosition: position,
-          isSkippableEventFired: false,
-          trackingTypes: AD_TIME_EVENT_TYPE.slice(),
-        })
-      }
-
-      if (
-        !state.isSkippableEventFired &&
-        streamTime >=
-          currentAd.startTimeInSeconds + getSkipTimeOffset(currentAd)
-      ) {
-        state.isSkippableEventFired = true
-
-        this._common.onSkippableStateChanged({
-          getAd: () => ({
-            isSkippable: () => true,
-          }),
-        })
-      }
-
-      if (
-        !_IsNumber(streamTime) ||
-        ((_currentAd$trackingEv3 = currentAd.trackingEvents) === null ||
-        _currentAd$trackingEv3 === void 0
-          ? void 0
-          : _currentAd$trackingEv3.length) <= 0
-      )
-        return
-      ;(_currentAd$trackingEv4 = currentAd.trackingEvents) === null ||
-      _currentAd$trackingEv4 === void 0
-        ? void 0
-        : _currentAd$trackingEv4.forEach(e => {
-            const {
-              eventType = '',
-              beaconUrls = [],
-              startTimeInSeconds = 0,
-              isFired,
-            } = e
-            const adEventIndex = state.trackingTypes.findIndex(
-              type => type === eventType
-            )
-
-            if (
-              !isFired &&
-              beaconUrls.length > 0 &&
-              streamTime >= startTimeInSeconds &&
-              adEventIndex !== -1
-            ) {
-              beaconUrls.forEach(url => {
-                fetch(url)
-              })
-              state.trackingTypes.splice(adEventIndex, 1)
-            }
-          })
-    }
-  }
-  /**
-   * @description To snapback if seeking over some ads
-   * @param {number} to
-   */
-
-  onSeek(to) {
-    const {adBreaks} = this._common
-    const skippedAds = this.getSkippedAds(to)
-    const seekTargetAdIndex = this.getActiveAdIndex(to)
-    if (!adBreaks || adBreaks.length <= 0) return
-
-    if (this.currentAd);
-    else if (skippedAds.length > 0) {
-      this.updateWaitingForPlayAds(skippedAds)
-      this.updateWaitingForPlayIndex(0)
-      this.resumeUserSeekTime = seekTargetAdIndex === -1 ? to : null
-    } else if (
-      seekTargetAdIndex !== -1 &&
-      !_IsNumber(this.resumeAdStartTime) &&
-      !this.isResumed
-    ) {
-      const {startTime} = this.getAdTimingInfo(adBreaks[seekTargetAdIndex])
-      this.resumeAdStartTime = startTime
-    }
-  }
-  /** @description to seek to next ad after snapback */
-
-  onSeeked() {
-    const {adBreaks, seek} = this._common
-    if (!adBreaks || adBreaks.length <= 0) return
-
-    if (this.waitingForPlayAds.length > 0 && !this.currentAd) {
-      const nextAd =
-        this.waitingForPlayAds[`${this.waitingForPlayAdIndex}`] || {}
-      const {startTime: nextAdStartTime} = this.getAdTimingInfo(nextAd)
-      seek === null || seek === void 0 ? void 0 : seek(nextAdStartTime)
-      this.updateCurrentAd(nextAd)
-    } else if (this.currentAd);
-    else if (_IsNumber(this.resumeAdStartTime)) {
-      _IsNumber(this.resumeAdStartTime) &&
-        (seek === null || seek === void 0
-          ? void 0
-          : seek(this.resumeAdStartTime))
-      this.resumeAdStartTime = null
-      this.isResumed = true
-    } else {
-      this.isResumed = false
-    }
-  }
-
-  updateCurrentAd(ad) {
-    if (!this.currentAd && ad) {
-      var _this$_common$onAdBre, _this$_common2
-
-      ;(_this$_common$onAdBre = (_this$_common2 = this._common)
-        .onAdBreakStarted) === null || _this$_common$onAdBre === void 0
-        ? void 0
-        : _this$_common$onAdBre.call(_this$_common2, adEventData(this, ad))
-    } else if (this.currentAd && !ad) {
-      var _this$_common$onAdBre2, _this$_common3
-
-      ;(_this$_common$onAdBre2 = (_this$_common3 = this._common)
-        .onAdBreakEnded) === null || _this$_common$onAdBre2 === void 0
-        ? void 0
-        : _this$_common$onAdBre2.call(_this$_common3, {
-            getStreamData: () => this.getStreamData(),
-          })
-    }
-
-    this.currentAd = ad
-
-    if (!ad) {
-      this.checkAdEventProcess = null
-    }
-  }
-
-  updateWaitingForPlayAds(ads) {
-    this.waitingForPlayAds = ads.slice()
-  }
-
-  updateWaitingForPlayIndex(index) {
-    this.waitingForPlayAdIndex = index
-  }
-  /** @description mark all ads as played */
-
-  setAllAdsFired() {
-    this._common.adBreaks = this._common.adBreaks.map(ad => ({
-      ...ad,
-      isFired: true,
-    }))
-    this.updateWaitingForPlayAds([])
-    this.updateWaitingForPlayIndex(null)
-    this.updateCurrentAd(null)
-  }
-  /** @description clear data */
-
-  reset() {
-    this._common = {
-      adBreaks: [],
-      currentPosition: -1,
-      seek: null,
-    }
-    this.currentAd = null
-    this.waitingForPlayAds = []
-    this.waitingForPlayAdIndex = null
-    this.resumeUserSeekTime = null
-    this.resumeAdStartTime = null
-    this.isResumed = null
-    this.checkAdEventProcess = null
-  }
-  /** @description clear ad status */
-
-  resetSession() {
-    this._common = {...this._common, currentPosition: 0}
-    this.resumeUserSeekTime = null
-    this.resumeAdStartTime = null
-    this.isResumed = null
-    this.updateWaitingForPlayAds([])
-    this.updateWaitingForPlayIndex(null)
-    this.updateCurrentAd(null)
-  }
-}
-
-const getLastAd = (avails, streamTime) =>
-  avails.reduce(
-    (current, item) =>
-      current.startTimeInSeconds <= item.startTimeInSeconds &&
-      item.startTimeInSeconds <= streamTime
-        ? item
-        : current,
-    {
-      startTimeInSeconds: 0,
-      durationInSeconds: 0,
-    }
-  )
-
-const getStreamTime = (avails, contentTime) =>
-  avails.reduce(
-    (time, item) =>
-      time + (time > item.startTimeInSeconds ? item.durationInSeconds : 0),
-    contentTime
-  )
-
-const getContentTime = (avails, streamTime) =>
-  streamTime -
-  avails
-    .filter(item => item.startTimeInSeconds <= streamTime)
-    .map(item =>
-      Math.min(streamTime - item.startTimeInSeconds, item.durationInSeconds)
-    )
-    .reduce((a, b) => a + b, 0)
-
-const seekingHandler = handleSeeking => {
-  const ref = {}
-  return video => {
-    if (
-      !(Math.abs(video.currentTime - ref.originTime) > 0.5) ||
-      video.webkitPresentationMode !== 'fullscreen'
-    ) {
-      ref.originTime = video.currentTime
-      return
-    }
-
-    handleSeeking({
-      originTime: ref.originTime,
-      seekTime: video.currentTime,
-    })
-    ref.originTime = video.currentTime
-  }
-}
-
-const snapback = ({streamManager, originTime, seekTime, seek}) => {
-  const cuePoint =
-    streamManager === null || streamManager === void 0
-      ? void 0
-      : streamManager.previousCuePointForStreamTime(seekTime)
-
-  if (
-    (cuePoint === null || cuePoint === void 0 ? void 0 : cuePoint.start) >=
-    originTime
-  ) {
-    once$1(streamManager, 'adBreakEnded', async () => {
-      // wait for ad playing flag to clear before resuming, TODO seek earlier
-      await new Promise(resolve => setTimeout(resolve, 20))
-      seek(seekTime)
-    })
-  }
-
-  seek(
-    (cuePoint === null || cuePoint === void 0 ? void 0 : cuePoint.start) >=
-      originTime
-      ? cuePoint.start
-      : seekTime
-  )
-}
-
-const addFetchPolyfill = () => {
-  window.fetch = async (url, {method} = {}) => {
-    const result = await axios(url, {
-      method,
-    })
-    return Promise.resolve({
-      json: () => result.data,
-    })
-  }
-}
-
-const fetchStreamInfo = async (url, adsParams) =>
-  fetch(url, {
-    method: 'POST',
-    body: JSON.stringify({
-      adsParams,
-    }),
-  }).then(result => result.json())
-
-const on = (eventTarget, eventName, handler) => {
-  eventTarget.addEventListener(eventName, handler)
-  return () => eventTarget.removeEventListener(eventName, handler)
-}
-
-const once = (eventTarget, eventName, handler) => {
-  const listener = (...args) => {
-    eventTarget.removeEventListener(eventName, listener)
-    return handler(...args)
-  }
-
-  eventTarget.addEventListener(eventName, listener)
-}
-
-const seekVideo = (videoElement, streamTime) => {
-  // eslint-disable-next-line no-param-reassign
-  videoElement.currentTime = streamTime
-}
-
-const initialState = {
-  currentTime: 0,
-  adBreaks: [],
-  mpdStartTime: 0,
-  isUserSkipAd: false,
-  skipAdEndTime: 0,
-}
-
-const getAdEndTime = (streamData, videoElement) => {
-  const {currentTime, duration} = streamData.adProgressData
-  return videoElement.currentTime + duration - currentTime
-}
-
-const pipeEvent = (emitter, type) => event =>
-  emitter.emit(type, {
-    type,
-    getAd: () => event.getAd(),
-    getStreamData: () => event.getStreamData(),
-  })
-
-const getMpdStartTime = manifest => {
-  const mpdDocument = new DOMParser().parseFromString(manifest, 'text/xml')
-  const availabilityStartTime = mpdDocument.firstChild.getAttribute(
-    'availabilityStartTime'
-  )
-  return new Date(availabilityStartTime).getTime() / 1000
-} // Align to Google DAI StreamManager
-
-const createStreamManager = (videoElement, {player, emitter}) => {
-  let state = initialState
-  const streamData = {}
-  const impression = new Impression({
-    seek: streamTime => seekVideo(videoElement, streamTime),
-    onAdBreakStarted: pipeEvent(emitter, 'adBreakStarted'),
-    onAdProgress: event => {
-      state.adEndTime = getAdEndTime(event.getStreamData(), videoElement)
-      pipeEvent(emitter, 'adProgress')(event)
-    },
-    onSkippableStateChanged: pipeEvent(emitter, 'skippableStateChanged'),
-    onAdBreakEnded: pipeEvent(emitter, 'adBreakEnded'),
-  })
-
-  const previousCuePointForStreamTime = streamTime => {
-    const ad = getLastAd(state.adBreaks, streamTime - 0.1 - state.mpdStartTime)
-
-    if (ad.durationInSeconds > 0) {
-      const start = ad.startTimeInSeconds
-      const end = start + ad.durationInSeconds
-      return {
-        start,
-        end,
-        played: state.played[ad.availId],
-      }
-    }
-
-    return undefined
-  }
-
-  emitter.on('adBreakEnded', () => {
-    state.adEndTime = -1
-    const ad = getLastAd(state.adBreaks, videoElement.currentTime)
-    state.played[ad.availId] = true
-  })
-
-  const refreshTrackingData = async () => {
-    if (!streamData.trackingUrl) {
-      return
-    }
-
-    const trackingData = (await fetch(streamData.trackingUrl).then(result =>
-      result.json()
-    )) || {
-      avails: [],
-    }
-    state.adBreaks = trackingData.avails || []
-
-    if (trackingData.avails.length > 0) {
-      impression.adBreaks = state.adBreaks
-      emitter.emit('cuepointsChanged', {
-        cuepoints: state.adBreaks.map(item => ({
-          start: getContentTime(state.adBreaks, item.startTimeInSeconds),
-        })),
-      })
-    }
-  }
-
-  const handleTimeUpdate = streamTime => {
-    // TODO get tracking events with actual buffer length
-    if (!Number.isFinite(streamTime)) {
-      return
-    }
-
-    if (player.isLive() && streamTime > state.currentTime + 5) {
-      state.currentTime = streamTime
-      refreshTrackingData()
-    } // workaround_OTP_2813
-
-    if (state.isUserSkipAd) {
-      // 0.1 is magic number for float-point
-      if (state.skipAdEndTime + 0.1 >= streamTime) {
-        return
-      }
-
-      state.isUserSkipAd = false
-      state.skipAdEndTime = -1
-    }
-
-    impression.currentPosition = streamTime - state.mpdStartTime
-  }
-
-  const streamManager = {
-    requestStream: async (options = {}) => {
-      const reportingUrl = options.client_side_reporting_url
-      const info = await fetchStreamInfo(reportingUrl, options.adParams).catch(
-        error => ({
-          error,
-        })
-      )
-
-      if (!info || info.error) {
-        return
-      }
-
-      streamData.trackingUrl = new URL(
-        info.trackingUrl,
-        reportingUrl
-      ).toString()
-      streamData.url = new URL(info.manifestUrl, reportingUrl).toString() // tracking events are available only after manifests are requested
-
-      await fetchManifests(streamData.url)
-      await refreshTrackingData()
-      emitter.emit('loaded', {
-        getStreamData: () => streamData,
-      })
-      state.played = {}
-    },
-    addEventListener: (eventName, handler) => emitter.on(eventName, handler),
-    removeEventListener: (eventName, handler) =>
-      emitter.off(eventName, handler),
-    streamTimeForContentTime: contentTime =>
-      getStreamTime(state.adBreaks, contentTime),
-    contentTimeForStreamTime: streamTime =>
-      getContentTime(state.adBreaks, streamTime),
-    previousCuePointForStreamTime,
-    skipAd: () => {
-      if (state.adEndTime > 0) {
-        // workaround_OTP_2813
-        const seekTime = state.adEndTime
-        handleTimeUpdate(state.adEndTime)
-        state.isUserSkipAd = true
-        state.skipAdEndTime = seekTime
-        player === null || player === void 0
-          ? void 0
-          : player.seek(seekTime, 'internal')
-      }
-    },
-    setMpdStartTime: time => {
-      state.mpdStartTime = time
-    },
-    getVastAvails: () => state.adBreaks,
-    reset: () => {
-      state.registered.forEach(removeListener => removeListener())
-      impression.reset()
-      state = initialState
-      streamData.trackingUrl = ''
-    },
-  }
-  const handleSeeking = seekingHandler(({originTime, seekTime}) => {
-    if (state.adEndTime > 0) {
-      seekVideo(videoElement, originTime)
-      return
-    }
-
-    const diff = seekTime - originTime
-
-    if (Math.abs(diff + 15) <= 0.25) {
-      seekVideo(
-        videoElement,
-        getStreamTime(
-          state.adBreaks,
-          getContentTime(state.adBreaks, originTime) + diff
-        )
-      )
-      return
-    }
-
-    snapback({
-      streamManager,
-      originTime,
-      seekTime,
-      seek: streamTime => {
-        if (Math.abs(videoElement.currentTime - streamTime) > 0.5) {
-          seekVideo(videoElement, streamTime)
-        }
-      },
-    })
-  })
-  state.registered = [
-    on(videoElement, 'timeupdate', () => {
-      handleSeeking(videoElement)
-
-      if (!videoElement.paused) {
-        handleTimeUpdate(videoElement.currentTime)
-      }
-    }),
-    on(videoElement, 'ended', () => handleTimeUpdate(Infinity)),
-  ]
-  return streamManager
-}
-
-const init = (options, {skipWatched}) => {
-  var _player$on
-
-  const {player, video, streamManager} = options
-  const ref = {
-    player,
-    video,
-    streamManager,
-  }
-  streamManager.addEventListener('adProgress', event => {
-    ref.adEndTime = getAdEndTime(event.getStreamData(), ref.video)
-  })
-  streamManager.addEventListener('adBreakEnded', () => {
-    ref.adEndTime = -1
-  })
-  player === null || player === void 0
-    ? void 0
-    : (_player$on = player.on) === null || _player$on === void 0
-    ? void 0
-    : _player$on.call(player, 'sourceloaded', () => {
-        ref.isLive = player.isLive()
-
-        if (player.manifest.dash && player.isLive()) {
-          // ad start / end time is based on availabilityStartTime in MPD manifest
-          streamManager.setMpdStartTime(getMpdStartTime(player.getManifest()))
-        }
-      })
-
-  if (skipWatched) {
-    video.addEventListener('timeupdate', () => {
-      const streamTime = video.currentTime
-      const cuePoint = streamManager.previousCuePointForStreamTime(
-        streamTime + 0.5
-      )
-
-      if (
-        (cuePoint === null || cuePoint === void 0 ? void 0 : cuePoint.end) >
-          streamTime &&
-        cuePoint.played
-      ) {
-        player === null || player === void 0
-          ? void 0
-          : player.seek(cuePoint.end, 'internal')
-      }
-    })
-  }
-
-  return ref
-}
-
-const MediaTailorPlugin = ({adParams, skipWatched} = {}) => {
-  const emitter = mitt()
-  let ref = {}
-  let options = {
-    adParams,
-  }
-  return {
-    isActive: () => !!ref.streamManager,
-    load: async (manifestItem, {player, video, source = {}} = {}) => {
-      var _ref$streamManager, _manifestItem$ssai, _source$options
-
-      if (typeof fetch !== 'function') {
-        addFetchPolyfill()
-      }
-
-      ;(_ref$streamManager = ref.streamManager) === null ||
-      _ref$streamManager === void 0
-        ? void 0
-        : _ref$streamManager.reset()
-      const mediaTailorOptions =
-        (_manifestItem$ssai = manifestItem.ssai) === null ||
-        _manifestItem$ssai === void 0
-          ? void 0
-          : _manifestItem$ssai.media_tailor
-
-      if (!mediaTailorOptions) {
-        return
-      }
-
-      mediaTailorOptions.adParams = options.adParams
-      const streamManager = createStreamManager(video, {
-        player,
-        emitter,
-      })
-      ref = init(
-        {
-          player,
-          video,
-          streamManager,
-        },
-        {
-          skipWatched,
-        }
-      )
-      streamManager.requestStream(mediaTailorOptions)
-      const {url} = await new Promise(resolve => {
-        once(streamManager, 'loaded', event => resolve(event.getStreamData()))
-      })
-
-      if (!url) {
-        console.warn('Ad stream is not available, use fallback stream instead')
-        return manifestItem
-      }
-
-      return {
-        ...manifestItem,
-        ssaiProvider: 'AWS',
-        url,
-        vastAvails: streamManager.getVastAvails(),
-        startTime: streamManager.streamTimeForContentTime(
-          (_source$options = source.options) === null ||
-            _source$options === void 0
-            ? void 0
-            : _source$options.startTime
-        ),
-      }
-    },
-    handleSeek: (contentTime, seek) => {
-      snapback({
-        streamManager: ref.streamManager,
-        originTime: ref.video.currentTime,
-        seekTime: ref.streamManager.streamTimeForContentTime(contentTime),
-        seek,
-      })
-    },
-    skipAd: () => ref.streamManager.skipAd(),
-    getPlaybackStatus: () =>
-      ref.streamManager && {
-        ...(!ref.isLive && {
-          currentTime: ref.streamManager.contentTimeForStreamTime(
-            ref.video.currentTime
-          ),
-          duration: ref.streamManager.contentTimeForStreamTime(
-            ref.video.duration
-          ),
-        }),
-        ...(ref.adEndTime > 0 && {
-          adRemainingTime: ref.adEndTime - ref.video.currentTime,
-        }),
-      },
-    on: (name, listener) => emitter.on(name, listener),
-    reset: () => {
-      var _ref$streamManager2
-
-      ;(_ref$streamManager2 = ref.streamManager) === null ||
-      _ref$streamManager2 === void 0
-        ? void 0
-        : _ref$streamManager2.reset()
-      ref.streamManager = undefined
-    },
-    setOptions: updatedOptions => {
-      options = updatedOptions
-    },
-  }
-}
-
 const loadScript = url =>
   new Promise(resolve => {
     const script = Object.assign(document.createElement('script'), {
@@ -9611,12 +7931,12 @@ const CastProvider = ({
 
         const subscribeVolumeChange = handleChange => {
           const listeners = [
-            on$1(
+            on(
               controller,
               cast.framework.RemotePlayerEventType.VOLUME_LEVEL_CHANGED,
               () => handleChange(getVolume(getMediaSession()))
             ),
-            on$1(
+            on(
               controller,
               cast.framework.RemotePlayerEventType.IS_MUTED_CHANGED,
               () => handleChange(getVolume(getMediaSession()))
@@ -9732,7 +8052,7 @@ CastProvider.propTypes = {
 
 const useCastContext = () => useContext(castContext) || defaultCastContext
 
-const CastConsumer = castContext.Consumer
+castContext.Consumer
 
 const layer = {
   position: 'absolute',
@@ -10577,98 +8897,170 @@ CastSender.propTypes = {
   children: PropTypes.node,
 }
 
-/**
- * @description Unplugging / disconnecting headphones will pause video in iOS,
- * and in some iOS versions, video is paused without firing a pause event.
- * Pause the video if paused by iOS in this case.
- * @param {HTMLMediaElement} video
- */
-
-const handleIOSHeadphonesDisconnection = ({maxStuckSeconds = 1} = {}) => {
-  const video = document.querySelector('video')
-
-  if (video && getOS().name === 'iOS') {
-    let playState = {
-      playing: false,
-    }
-
-    const saveState = ({playing = playState.playing} = {}) => {
-      playState = {
-        playing,
-        ...(playing && {
-          lastTimeUpdate: Date.now(),
-        }),
-      }
-    }
-
-    video.addEventListener('pause', () => {
-      playState = {
-        playing: false,
-      }
-    })
-    video.addEventListener('seeking', () => {
-      playState = {
-        playing: false,
-      }
-    })
-    video.addEventListener('waiting', () => {
-      playState = {
-        playing: false,
-      }
-    })
-    video.addEventListener('webkitpresentationmodechanged', () => {
-      playState = {
-        playing: false,
-        pauseDetection: Date.now() + 5000,
-      }
-    })
-    video.addEventListener('timeupdate', () => {
-      if (!video.paused) {
-        const delta = Date.now() - playState.lastTimeUpdate
-        playState.lastTimeUpdate = Date.now()
-
-        if (delta > 0 && delta < 1000) {
-          playState.playing = true
-        }
-      }
-
-      saveState({
-        playing: !video.paused,
-      })
-    })
-    video.addEventListener('ratechange', saveState)
-    setInterval(() => {
-      if (
-        video.paused ||
-        !playState.playing ||
-        playState.pauseDetection >= Date.now()
-      ) {
-        return
-      }
-
-      const secondsStuck = (Date.now() - playState.lastTimeUpdate) / 1000
-
-      if (secondsStuck >= maxStuckSeconds) {
-        console.log(
-          'Video is not playing, pause to workaround iOS unpluging headphones'
-        )
-        video.pause()
-      }
-    }, 200)
-  }
+/* eslint-disable react/prop-types */
+const sizes = {
+  'small-embed': 200,
+  embed: 400,
+  'tablet-portrait': 600,
+  'tablet-landscape': 900,
+  desktop: 1200,
 }
 
-const {SupportEnvironment} = config
+const BasicUi = ({
+  style,
+  video,
+  autohide,
+  children,
+  getLayoutProps,
+  seekbar = {},
+  playbackState,
+  currentTime,
+  duration,
+  bufferTime,
+  seekEnabled,
+  onPlaybackStateChange,
+  onCurrentTimeChange,
+}) => {
+  const uiType = isDesktop() ? 'desktop' : 'mobile'
+  const containerRef = useRef()
+  const {
+    width,
+    currentBreakpoint: size,
+    observe,
+  } = useDimensions({
+    polyfill: ResizeObserver,
+    breakpoints: sizes,
+  }) // short waiting should not reflect to UI
+
+  const waiting = useLazyWaiting(playbackState === 'waiting')
+  const activePlayback =
+    playbackState === 'playing' || playbackState === 'waiting'
+  const {mode, onClick, onMouseMove} = useAutoHide({
+    pinned: !autohide || waiting || !activePlayback,
+    tapToHide: uiType === 'mobile',
+  })
+  const layoutProps =
+    (getLayoutProps === null || getLayoutProps === void 0
+      ? void 0
+      : getLayoutProps({
+          type: uiType,
+          mode,
+          width,
+          size,
+        })) || {}
+  return /*#__PURE__*/ jsxs$1(DefaultLayout, {
+    style: style,
+    type: uiType,
+    display: mode,
+    size: size,
+    video: video,
+    containerRef: element => {
+      observe(element)
+      containerRef.current = element
+    },
+    seekbar:
+      isFinite(duration) &&
+      /*#__PURE__*/ jsx(Seekbar$1, {
+        currentTime: currentTime,
+        bufferTime: bufferTime,
+        duration: duration,
+        marks: seekbar.marks,
+        addons: seekbar.addons,
+        ...(seekEnabled && {
+          play: () => onPlaybackStateChange('playing'),
+          pause: () => onPlaybackStateChange('paused'),
+          seek: onCurrentTimeChange,
+        }),
+        disabled: !seekEnabled,
+      }),
+    ...layoutProps,
+    controlButtons: {
+      playButton: /*#__PURE__*/ jsx(PlayButton$1, {
+        playbackState: playbackState,
+        ended: playbackState === 'ended',
+        onClick: () =>
+          onPlaybackStateChange(
+            playbackState !== 'playing' ? 'playing' : 'paused'
+          ),
+      }),
+      // TOOD add support for preload
+      ...layoutProps.controlButtons,
+    },
+    backItems: waiting
+      ? /*#__PURE__*/ jsx(LoadingSpinner, {})
+      : layoutProps.backItems,
+    onClick: onClick,
+    onMouseMove: onMouseMove,
+    children: [
+      children,
+      /*#__PURE__*/ jsx(Backdrop, {
+        open: !playbackState || playbackState === 'loading',
+        children: /*#__PURE__*/ jsx(LoadingSpinner, {}),
+      }),
+    ],
+  })
+}
+
+/* @jsxImportSource @emotion/react */
+
+const VideoPlayer = ({
+  style,
+  autohide,
+  seekbar,
+  getLayoutProps,
+  children,
+  autoplay,
+  ...videoProps
+}) => {
+  const [videoState, setVideoState] = useState({})
+  const [targetState, setTargetState] = useState({
+    playbackState: autoplay ? 'playing' : 'paused',
+  })
+  useEffect(() => {
+    const unsubscribe = subscribeMediaState(
+      videoProps.videoRef.current,
+      setVideoState,
+      videoProps.plugins
+    )
+    return () => unsubscribe()
+  }, [])
+  const uiProps = {
+    style,
+    autohide,
+    getLayoutProps,
+    seekbar,
+    onPlaybackStateChange: playbackState =>
+      setTargetState(state => ({...state, playbackState})),
+    onCurrentTimeChange: currentTime =>
+      setTargetState(state => ({...state, currentTime})),
+  }
+  return jsx$1(IntlProvider, {
+    children: jsx$1(BasicUi, {
+      video: jsx$1(Video, {...videoProps, ...targetState}),
+      ...videoState,
+      ...uiProps,
+      children: children,
+    }),
+  })
+}
+
+VideoPlayer.propTypes = {
+  style: PropTypes.object,
+  plugins: PropTypes.array,
+  autohide: PropTypes.bool,
+  seekbar: PropTypes.object,
+  children: PropTypes.node,
+  getLayoutProps: PropTypes.func,
+  autoplay: PropTypes.bool,
+}
 
 export {
-  CastVideoButton as CastButton,
-  CastConsumer,
   CastSender,
-  MediaTailorPlugin,
-  Player,
-  SupportEnvironment,
-  getBVKDrmConfig,
-  getEnterpriseDrmConfig,
-  getVersion,
-  handleIOSHeadphonesDisconnection,
+  CoverImage,
+  FunctionBarExtension,
+  LiveEnd,
+  PremiumPlayer,
+  PremiumPlusPlayer,
+  Video,
+  VideoPlayer,
 }

@@ -1388,7 +1388,7 @@ function convertToSeconds(timeString) {
 function getVersion() {
   try {
     // eslint-disable-next-line no-undef
-    return '1.9.0-rc.0'
+    return '1.9.0-rc.6'
   } catch (e) {
     return undefined
   }
@@ -2231,7 +2231,7 @@ const waitFor = (check, handler) => {
 /* eslint-disable no-param-reassign */
 
 const isEnded = media =>
-  Number.isFinite(media.initialDuration) &&
+  isFinite(media.initialDuration) &&
   media.initialDuration - media.currentTime < 1 &&
   media.ended // When donwload bandwidth is low, Safari may report time update while buffering, ignore it.
 
@@ -2248,7 +2248,11 @@ const isBuffered = media =>
     // in Safari buffered is clipped to integer
     range =>
       range.start <= media.currentTime && media.currentTime <= range.end + 1
-  )
+  ) // In shaka, duration is always 2^32 in live.
+
+const SHAKA_LIVE_DURATION = 4294967296
+
+const isFinite = duration => duration < SHAKA_LIVE_DURATION
 
 const getMediaTime = (media, plugins = []) => {
   const {duration, ...data} = Object.assign(
@@ -2275,7 +2279,7 @@ const getMediaTime = (media, plugins = []) => {
   )
   return {
     ...data,
-    ...((!Number.isFinite(media.initialDuration) ||
+    ...((!isFinite(media.initialDuration) ||
       Math.abs(media.duration - media.initialDuration) < 0.1) && {
       duration,
     }),
@@ -2412,15 +2416,24 @@ const load = async (media, {player, drm, startTime, plugins = []}, source) => {
   const {startTime: loadStartTime, ...config} = merged
   return player
     .unload()
-    .then(() =>
-      player.load({
-        ...config,
-        drm,
-        options: {
-          startTime: loadStartTime,
-        },
-      })
-    )
+    .then(() => {
+      var _player$getDrmConfig
+
+      return (
+        // TODO drm is Bitmovin form, but should be agnostic
+        player.load({
+          ...config,
+          drm:
+            ((_player$getDrmConfig = player.getDrmConfig) === null ||
+            _player$getDrmConfig === void 0
+              ? void 0
+              : _player$getDrmConfig.call(player, drm)) || drm,
+          options: {
+            startTime: loadStartTime,
+          },
+        })
+      )
+    })
     .catch(error => {
       media.dispatchEvent(
         Object.assign(new CustomEvent('error'), {
@@ -2882,6 +2895,8 @@ const HEARTBEAT_INTERVAL_MS = 10000
 const UPDATE_INTERVAL_MS = 10000
 
 const startPlaybackSession = async (playbackApi, options = {}) => {
+  var _options$cache, _options$cache$get, _options$cache2, _options$cache2$get
+
   const emitter = mitt__default['default']()
   const {type, id, getCurrentTime} = options
   const {
@@ -2893,28 +2908,37 @@ const startPlaybackSession = async (playbackApi, options = {}) => {
   } = options
   const state = {}
 
-  const updateContent = () =>
-    playbackApi
-      .getContent({
-        type,
-        id,
-      })
-      .then(content => {
-        if (!deepEqual(content, state.content)) {
-          state.content = content
-          onChangeContent === null || onChangeContent === void 0
-            ? void 0
-            : onChangeContent({
-                type,
-                ...content,
-                sources: state.sources,
-              })
-        }
-      }) // get last playback time to start playback fast
+  const updateContent = async contentInCache => {
+    const content =
+      !contentInCache || contentInCache.end_time * 1000 <= Date.now()
+        ? await playbackApi.getContent({
+            type,
+            id,
+          })
+        : contentInCache
+
+    if (!deepEqual(content, state.content)) {
+      state.content = content
+      onChangeContent === null || onChangeContent === void 0
+        ? void 0
+        : onChangeContent({
+            type,
+            ...content,
+            sources: state.sources,
+          })
+    }
+  } // get last playback time to start playback fast
   // getContent is not critical, so don't block playback if it hangs or fails(ignored in API logic)
 
   const loadContent = Promise.race([
-    updateContent(),
+    updateContent(
+      (_options$cache = options.cache) === null || _options$cache === void 0
+        ? void 0
+        : (_options$cache$get = _options$cache.get(`${type}/${id}`)) === null ||
+          _options$cache$get === void 0
+        ? void 0
+        : _options$cache$get.content
+    ),
     new Promise(resolve => {
       setTimeout(resolve, UPDATE_INTERVAL_MS)
     }),
@@ -2928,7 +2952,15 @@ const startPlaybackSession = async (playbackApi, options = {}) => {
     id,
     token: sessionInfo.token,
   }
-  state.sources = (await playbackApi.getPlaybackInfo(requestParams)).sources
+  state.sources = (
+    ((_options$cache2 = options.cache) === null || _options$cache2 === void 0
+      ? void 0
+      : (_options$cache2$get = _options$cache2.get(`${type}/${id}`)) === null ||
+        _options$cache2$get === void 0
+      ? void 0
+      : _options$cache2$get.playbackInfo) ||
+    (await playbackApi.getPlaybackInfo(requestParams))
+  ).sources
   onChangeStream === null || onChangeStream === void 0
     ? void 0
     : onChangeStream({
@@ -2997,6 +3029,68 @@ const startPlaybackSession = async (playbackApi, options = {}) => {
     updateLastPlayed,
     end,
   }
+}
+
+const preload = (
+  playbackApi,
+  preloadList,
+  currentContent,
+  cache,
+  options = {}
+) => {
+  const {updateTime = 10000} = options
+
+  const fetchData = () => {
+    preloadList.forEach(async ({contentType: type, contentId: id}) => {
+      var _cache$get, _cache$get$content
+
+      if (id === currentContent.id && type === currentContent.type) return
+      const endTime =
+        (_cache$get = cache.get(`${type}/${id}`)) === null ||
+        _cache$get === void 0
+          ? void 0
+          : (_cache$get$content = _cache$get.content) === null ||
+            _cache$get$content === void 0
+          ? void 0
+          : _cache$get$content.end_time
+      if (typeof endTime === 'number' && endTime * 1000 >= Date.now()) return
+
+      try {
+        const {token} = await playbackApi.startPlayback({
+          type,
+          id,
+        })
+        const waitForContent = playbackApi.getContent({
+          type,
+          id,
+        })
+        const waitForPlaybackInfo = playbackApi.getPlaybackInfo({
+          type,
+          id,
+          token,
+        })
+        const [content, playbackInfo] = await Promise.all([
+          waitForContent,
+          waitForPlaybackInfo,
+        ])
+        cache.set(`${type}/${id}`, {
+          content,
+          playbackInfo,
+        })
+        playbackApi.endPlayback({
+          type,
+          id,
+          token,
+        })
+      } catch (e) {
+        console.error(e)
+      }
+    })
+  }
+
+  fetchData()
+  const fetchDataIntervalID = setInterval(fetchData, updateTime)
+  return () => clearInterval(fetchDataIntervalID)
 }
 
 const getSourceTypeSettings = sources => {
@@ -3778,7 +3872,7 @@ const useIntervalUpdate = get => {
 const SkipAdButton = ({skipAd, getWaitTime}) => {
   const waitTime = useIntervalUpdate(getWaitTime)
   return (
-    Number.isFinite(waitTime) &&
+    isFinite(waitTime) &&
     /*#__PURE__*/ jsxRuntime.jsx(SkipButton, {
       waitTime: waitTime,
       onClick: skipAd,
@@ -3796,9 +3890,10 @@ const Status = ({total, position, getRemainingTime}) => {
 const mergeAdUi = (
   uiElements,
   {position, total, adBreakDuration, skipTimeOffset, clickThroughUrl},
-  plugins
+  plugins,
+  media
 ) => {
-  const getRemainingTime = () => getMediaTime({}, plugins).adRemainingTime
+  const getRemainingTime = () => getMediaTime(media, plugins).adRemainingTime
 
   const getSkipWaitTime = () =>
     skipTimeOffset >= 0
@@ -3996,151 +4091,6 @@ const useAutoHide = ({hideTimeMs = 3000, pinned, tapToHide, onHide} = {}) => {
       if (!('ontouchstart' in window)) {
         interact()
       }
-    },
-  }
-}
-
-/* eslint-disable indent */
-const FairplayKeySystem = {
-  prepareContentId: contentUri => {
-    const uriParts = contentUri.split('://')
-    const contentId = uriParts[1] || ''
-    return uriParts[0].slice(-3).toLowerCase() === 'skd' ? contentId : ''
-  },
-  prepareCertificate: cert => new Uint8Array(cert),
-  prepareMessage: (keyMessageEvent, keySession) => {
-    const spc = encodeURIComponent(keyMessageEvent.messageBase64Encoded)
-    const assetId = encodeURIComponent(keySession.contentId)
-    return `spc=${spc}&asset_id=${assetId}`
-  },
-  prepareLicense: license => {
-    if (license.substr(0, 5) === '<ckc>' && license.substr(-6) === '</ckc>') {
-      return license.slice(5, -6)
-    }
-
-    return license
-  },
-}
-
-const getConfig = (config, {host, widevine = {}, fairplay = {}}) => {
-  const widevineHeaders = {
-    ...config.headers,
-    ...(widevine === null || widevine === void 0 ? void 0 : widevine.headers),
-  }
-  const fairplayHeaders = {
-    ...config.headers,
-    ...(fairplay === null || fairplay === void 0 ? void 0 : fairplay.headers),
-  }
-  return {
-    widevine: {
-      LA_URL: host.widevine,
-      ...config,
-      headers: widevineHeaders,
-    },
-    fairplay: {
-      LA_URL: host.fairplay,
-      ...config,
-      headers: fairplayHeaders,
-      certificateURL: `${host.fairplay.replace(/\/$/, '')}/fairplay_cert`,
-      certificateHeaders: fairplay.certificateHeaders,
-      ...FairplayKeySystem,
-    },
-    playready: {
-      LA_URL: host.playready,
-      ...config,
-    },
-  }
-}
-/**
- * @param {object}
- * @param {object} .host
- * @param {string} .host.widevine
- * @param {string} .host.fairplay
- * @param {string} .host.playready
- * @param {string} .token
- * @param {object} .headers
- * @param {object} .widevine
- * @param {WidevineLevels} .widevine.level
- * @param {string[]} .widevine.blockedDevices Some devices doesn't play well
- * with hardware based Widevine, so don't enforce it
- */
-
-const getEnterpriseDrmConfig = ({host, token, headers = {}}) => {
-  const config = {
-    withCredentials: false,
-    headers: {
-      'X-Custom-Data': `token_type=playback&token_value=${token}`,
-      'X-Custom-Header': queryString(headers),
-    },
-  }
-  return getConfig(config, {
-    host,
-  })
-}
-
-const getBVKDrmConfig = ({host, token}) => {
-  const config = {
-    withCredentials: false,
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  }
-  const fairplay = {
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    certificateHeaders: {
-      Authorization: `Bearer ${token}`,
-    },
-  }
-  return getConfig(config, {
-    host,
-    fairplay,
-  })
-}
-
-const defaultCertificateURL = url =>
-  `${
-    url === null || url === void 0 ? void 0 : url.replace(/\/$/, '')
-  }/fairplay_cert`
-
-const getDrmConfig = ({
-  url,
-  headers,
-  widevine = {
-    level: undefined,
-  },
-  fairplay = {
-    certificateURL: defaultCertificateURL(url),
-  },
-}) => {
-  if (!url) {
-    return {}
-  }
-
-  return {
-    widevine: {
-      LA_URL: url,
-      withCredentials: false,
-      headers,
-      ...((widevine === null || widevine === void 0
-        ? void 0
-        : widevine.level) && {
-        videoRobustness:
-          widevine === null || widevine === void 0 ? void 0 : widevine.level,
-      }),
-    },
-    fairplay: {
-      LA_URL: url,
-      withCredentials: false,
-      headers,
-      certificateURL: fairplay.certificateURL,
-      ...FairplayKeySystem,
-    },
-    playready: {
-      LA_URL: url,
-      withCredentials: false,
-      headers,
     },
   }
 }
@@ -5624,6 +5574,323 @@ const loadNative = ({videoElement}) => ({
   destroy: () => {},
 })
 
+/* eslint-disable indent */
+const FairplayKeySystem = {
+  prepareContentId: contentUri => {
+    const uriParts = contentUri.split('://')
+    const contentId = uriParts[1] || ''
+    return uriParts[0].slice(-3).toLowerCase() === 'skd' ? contentId : ''
+  },
+  prepareCertificate: cert => new Uint8Array(cert),
+  prepareMessage: (keyMessageEvent, keySession) => {
+    const spc = encodeURIComponent(keyMessageEvent.messageBase64Encoded)
+    const assetId = encodeURIComponent(keySession.contentId)
+    return `spc=${spc}&asset_id=${assetId}`
+  },
+  prepareLicense: license => {
+    if (license.substr(0, 5) === '<ckc>' && license.substr(-6) === '</ckc>') {
+      return license.slice(5, -6)
+    }
+
+    return license
+  },
+}
+
+const getConfig = (config, {host, widevine = {}, fairplay = {}}) => {
+  const widevineHeaders = {
+    ...config.headers,
+    ...(widevine === null || widevine === void 0 ? void 0 : widevine.headers),
+  }
+  const fairplayHeaders = {
+    ...config.headers,
+    ...(fairplay === null || fairplay === void 0 ? void 0 : fairplay.headers),
+  }
+  return {
+    widevine: {
+      LA_URL: host.widevine,
+      ...config,
+      headers: widevineHeaders,
+    },
+    fairplay: {
+      LA_URL: host.fairplay,
+      ...config,
+      headers: fairplayHeaders,
+      certificateURL: `${host.fairplay.replace(/\/$/, '')}/fairplay_cert`,
+      certificateHeaders: fairplay.certificateHeaders,
+      ...FairplayKeySystem,
+    },
+    playready: {
+      LA_URL: host.playready,
+      ...config,
+    },
+  }
+}
+/**
+ * @param {object}
+ * @param {object} .host
+ * @param {string} .host.widevine
+ * @param {string} .host.fairplay
+ * @param {string} .host.playready
+ * @param {string} .token
+ * @param {object} .headers
+ * @param {object} .widevine
+ * @param {WidevineLevels} .widevine.level
+ * @param {string[]} .widevine.blockedDevices Some devices doesn't play well
+ * with hardware based Widevine, so don't enforce it
+ */
+
+const getEnterpriseDrmConfig = ({host, token, headers = {}}) => {
+  const config = {
+    withCredentials: false,
+    headers: {
+      'X-Custom-Data': `token_type=playback&token_value=${token}`,
+      'X-Custom-Header': queryString(headers),
+    },
+  }
+  return getConfig(config, {
+    host,
+  })
+}
+
+const getBVKDrmConfig = ({host, token}) => {
+  const config = {
+    withCredentials: false,
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+  const fairplay = {
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    certificateHeaders: {
+      Authorization: `Bearer ${token}`,
+    },
+  }
+  return getConfig(config, {
+    host,
+    fairplay,
+  })
+}
+
+const defaultCertificateUrl = url =>
+  `${
+    url === null || url === void 0 ? void 0 : url.replace(/\/$/, '')
+  }/fairplay_cert`
+
+/* eslint-disable no-param-reassign */
+
+const convertShakaDrm = ({url}) => ({
+  servers: {
+    'com.widevine.alpha': url,
+    'com.microsoft.playready': url,
+    'com.apple.fps.1_0': url,
+  },
+  advanced: {
+    'com.apple.fps.1_0': {
+      serverCertificateUri: defaultCertificateUrl(url),
+    },
+  },
+})
+
+const getQualityItem = track => ({
+  id: track.originalVideoId,
+  bitrate: track.videoBandwidth,
+  width: track.width,
+  height: track.height,
+  codec: track.videoCodec,
+  frameRate: track.frameRate,
+})
+
+const loadShaka = async ({videoElement, config = {}, extraConfig = {}}) => {
+  const shaka = await Promise.resolve().then(function () {
+    return /*#__PURE__*/ _interopNamespace(require('shaka-player'))
+  })
+  shaka.polyfill.installAll()
+  const player = new shaka.Player(videoElement)
+
+  const getAvailableVideoQualities = () =>
+    player.getVariantTracks().reduce((trackList, currentTrack) => {
+      const keepOrignalTrack = trackList.find(
+        track => track.height === currentTrack.height
+      )
+
+      if (!keepOrignalTrack) {
+        trackList.push(getQualityItem(currentTrack))
+      }
+
+      return trackList
+    }, [])
+
+  const getVideoQuality = () => {
+    const activeTrack = player.getVariantTracks().find(track => track.active)
+    if (!activeTrack) return {}
+    return getQualityItem(activeTrack)
+  }
+
+  return {
+    load: async ({dash, hls, drm}) => {
+      player.configure({
+        ...config,
+        drm: convertShakaDrm(drm),
+        streaming: {
+          useNativeHlsOnSafari: true,
+        },
+      })
+      player.getNetworkingEngine().registerRequestFilter((type, request) => {
+        if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
+          request.headers = {...request.headers, ...drm.headers}
+        }
+      })
+      /*
+        In iOS Safari, native `canplay` would not be fired and keep loading forever.
+        We need to fire `canplay` manually by shaka event, loaded.
+      */
+
+      player.addEventListener('loaded', () => {
+        videoElement.dispatchEvent(new Event('canplay'))
+      })
+      videoElement.autoplay = extraConfig.autoplay
+
+      if (!videoElement.autoplay) {
+        videoElement.muted = false
+      }
+
+      const assetUri = needNativeHls() ? hls : dash
+      player.load(assetUri)
+    },
+    play: () => videoElement.play(),
+    pause: () => videoElement.pause(),
+    seek: time => {
+      videoElement.currentTime = time
+    },
+    isLive: () =>
+      player === null || player === void 0 ? void 0 : player.isLive(),
+    destroy: () =>
+      player === null || player === void 0 ? void 0 : player.destroy(),
+    getCurrentTime: () => videoElement.currentTime,
+    getDuration: () => videoElement.duration,
+    getViewMode: () => 'fullscreen',
+    getStreamType: () => 'dash',
+    getVideoBufferLength: () => player.getBufferedInfo().video,
+    getAudioBufferLength: () => player.getBufferedInfo().audio,
+    setVolume: volume => {
+      videoElement.volume = volume / 100
+    },
+    unmute: () => {
+      videoElement.muted = false
+    },
+    mute: () => {
+      videoElement.muted = true
+    },
+    setPlaybackSpeed: rate => {
+      videoElement.playbackRate = rate
+    },
+    hasEnded: () => videoElement.ended,
+    // TODO
+    getSource: () => null,
+    // TODO: implement this function
+    getSupportedTech: () => [
+      {
+        player: 'html5',
+        streaming: 'dash',
+      },
+    ],
+    getPlaybackSpeed: () => videoElement.playbackRate,
+    getVideoElement: () => videoElement,
+    setQuality: restrictions => {
+      if (!restrictions) return
+      player.configure('restrictions', restrictions)
+    },
+    getVideoQuality,
+    getAvailableVideoQualities,
+    getSubtitles: () =>
+      player.getTextTracks().map(track => ({
+        label: track.label,
+        value: track.language,
+        enabled: track.active,
+      })),
+    setSubtitleTrack: lang => {
+      if (lang === 'off') {
+        player === null || player === void 0
+          ? void 0
+          : player.setTextTrackVisibility(false)
+        return
+      }
+
+      player === null || player === void 0
+        ? void 0
+        : player.selectTextLanguage(lang)
+      player === null || player === void 0
+        ? void 0
+        : player.setTextTrackVisibility(true)
+    },
+    getAudio: () => {
+      const active =
+        player === null || player === void 0
+          ? void 0
+          : player.getVariantTracks().find(track => track.active)
+      return {
+        lang: active === null || active === void 0 ? void 0 : active.language,
+        label: active === null || active === void 0 ? void 0 : active.label,
+      }
+    },
+    getAudioList: () =>
+      player.getVariantTracks().map(track => ({
+        lang: track.language,
+        label: track.label,
+      })),
+    setAudioTrack: lang => {
+      if (!lang) return
+      player === null || player === void 0
+        ? void 0
+        : player.selectAudioLanguage(lang)
+    },
+    unload: () => player.unload(),
+  }
+}
+
+const getDrmConfig = ({
+  url,
+  headers,
+  widevine = {
+    level: undefined,
+  },
+  fairplay = {
+    certificateURL: defaultCertificateUrl(url),
+  },
+}) => {
+  if (!url) {
+    return {}
+  }
+
+  return {
+    widevine: {
+      LA_URL: url,
+      withCredentials: false,
+      headers,
+      ...((widevine === null || widevine === void 0
+        ? void 0
+        : widevine.level) && {
+        videoRobustness:
+          widevine === null || widevine === void 0 ? void 0 : widevine.level,
+      }),
+    },
+    fairplay: {
+      LA_URL: url,
+      withCredentials: false,
+      headers,
+      certificateURL: fairplay.certificateURL,
+      ...FairplayKeySystem,
+    },
+    playready: {
+      LA_URL: url,
+      withCredentials: false,
+      headers,
+    },
+  }
+}
+
 const loadBitmovin = async ({
   container,
   videoElement,
@@ -5751,7 +6018,9 @@ const loadBitmovin = async ({
 
   player.setAdaptationHandler = handler => {
     adaptationHandler = handler
-  } // Mock Shaka player interface from shaka.js
+  }
+
+  player.getDrmConfig = getDrmConfig // Mock Shaka player interface from shaka.js
 
   player.getSubtitles = () => {
     var _player$subtitles
@@ -5849,198 +6118,18 @@ const loadBitmovin = async ({
   return player
 }
 
-/* eslint-disable no-param-reassign */
-
-const convertShakaDrm = drm => ({
-  servers: {
-    'com.widevine.alpha':
-      drm === null || drm === void 0 ? void 0 : drm.widevine.LA_URL,
-    'com.microsoft.playready':
-      drm === null || drm === void 0 ? void 0 : drm.playready.LA_URL,
-    'com.apple.fps.1_0':
-      drm === null || drm === void 0 ? void 0 : drm.fairplay.LA_URL,
-  },
-  advanced: {
-    'com.apple.fps.1_0': {
-      serverCertificateUri:
-        drm === null || drm === void 0 ? void 0 : drm.fairplay.certificateURL,
-    },
-  },
-})
-
-const getQualityItem = track => ({
-  id: track.originalVideoId,
-  bitrate: track.videoBandwidth,
-  width: track.width,
-  height: track.height,
-  codec: track.videoCodec,
-  frameRate: track.frameRate,
-})
-
-const loadShaka = async ({videoElement, config = {}, extraConfig}) => {
-  const shaka = await Promise.resolve().then(function () {
-    return /*#__PURE__*/ _interopNamespace(require('shaka-player'))
-  })
-  shaka.polyfill.installAll()
-  const player = new shaka.Player(videoElement)
-
-  const getAvailableVideoQualities = () =>
-    player.getVariantTracks().reduce((trackList, currentTrack) => {
-      const keepOrignalTrack = trackList.find(
-        track => track.height === currentTrack.height
-      )
-
-      if (!keepOrignalTrack) {
-        trackList.push(getQualityItem(currentTrack))
-      }
-
-      return trackList
-    }, [])
-
-  const getVideoQuality = () => {
-    const activeTrack = player.getVariantTracks().find(track => track.active)
-    if (!activeTrack) return {}
-    return getQualityItem(activeTrack)
-  }
-
-  return {
-    load: async ({dash, hls, drm}) => {
-      player.configure({
-        ...config,
-        drm: convertShakaDrm(drm),
-        streaming: {
-          useNativeHlsOnSafari: true,
-        },
-      })
-      player.getNetworkingEngine().registerRequestFilter((type, request) => {
-        if (type === shaka.net.NetworkingEngine.RequestType.LICENSE) {
-          request.headers = {
-            ...request.headers,
-            // TODO: Sperate custom headers by DRM system.
-            ...drm.widevine.headers,
-          }
-        }
-      })
-      /*
-        In iOS Safari, native `canplay` would not be fired and keep loading forever.
-        We need to fire `canplay` manually by shaka event, loaded.
-      */
-
-      player.addEventListener('loaded', () => {
-        videoElement.dispatchEvent(new Event('canplay'))
-      })
-      videoElement.autoplay = extraConfig.autoplay
-
-      if (!videoElement.autoplay) {
-        videoElement.muted = false
-      }
-
-      const assetUri = needNativeHls() ? hls : dash
-      player.load(assetUri)
-    },
-    play: () => videoElement.play(),
-    pause: () => videoElement.pause(),
-    seek: time => {
-      videoElement.currentTime = time
-    },
-    isLive: () =>
-      player === null || player === void 0 ? void 0 : player.isLive(),
-    destroy: () =>
-      player === null || player === void 0 ? void 0 : player.destroy(),
-    getCurrentTime: () => videoElement.currentTime,
-    getDuration: () => videoElement.duration,
-    getViewMode: () => 'fullscreen',
-    getStreamType: () => 'dash',
-    getVideoBufferLength: () => player.getBufferedInfo().video,
-    getAudioBufferLength: () => player.getBufferedInfo().audio,
-    setVolume: volume => {
-      videoElement.volume = volume / 100
-    },
-    unmute: () => {
-      videoElement.muted = false
-    },
-    mute: () => {
-      videoElement.muted = true
-    },
-    setPlaybackSpeed: rate => {
-      videoElement.playbackRate = rate
-    },
-    hasEnded: () => videoElement.ended,
-    // TODO
-    getSource: () => null,
-    // TODO: implement this function
-    getSupportedTech: () => [
-      {
-        player: 'html5',
-        streaming: 'dash',
-      },
-    ],
-    getPlaybackSpeed: () => videoElement.playbackRate,
-    getVideoElement: () => videoElement,
-    setQuality: restrictions => {
-      if (!restrictions) return
-      player.configure('restrictions', restrictions)
-    },
-    getVideoQuality,
-    getAvailableVideoQualities,
-    getSubtitles: () =>
-      player.getTextTracks().map(track => ({
-        label: track.label,
-        value: track.language,
-        enabled: track.active,
-      })),
-    setSubtitleTrack: lang => {
-      if (lang === 'off') {
-        player === null || player === void 0
-          ? void 0
-          : player.setTextTrackVisibility(false)
-        return
-      }
-
-      player === null || player === void 0
-        ? void 0
-        : player.selectTextLanguage(lang)
-      player === null || player === void 0
-        ? void 0
-        : player.setTextTrackVisibility(true)
-    },
-    getAudio: () => {
-      const active =
-        player === null || player === void 0
-          ? void 0
-          : player.getVariantTracks().find(track => track.active)
-      return {
-        lang: active === null || active === void 0 ? void 0 : active.language,
-        label: active === null || active === void 0 ? void 0 : active.label,
-      }
-    },
-    getAudioList: () =>
-      player.getVariantTracks().map(track => ({
-        lang: track.language,
-        label: track.label,
-      })),
-    setAudioTrack: lang => {
-      if (!lang) return
-      player === null || player === void 0
-        ? void 0
-        : player.selectAudioLanguage(lang)
-    },
-    unload: () => player.unload(),
-  }
-}
-
 const loadPlayer = async (
   videoElement,
-  {container, autoplay, source, bitmovin, shaka}
+  {container, autoplay, source, shaka, bitmovin}
 ) => {
   if (source !== null && source !== void 0 && source.native) {
     const player = await loadNative({
       videoElement,
     })
     return player
-  }
+  } // default to Shaka
 
-  if (shaka) {
+  if (shaka || !bitmovin) {
     const player = await loadShaka({
       videoElement,
       config: shaka,
@@ -6107,7 +6196,7 @@ const Video = ({
   const [contentLoaded, setContentLoaded] = React.useState(false)
   const ready = player && contentLoaded && playbackState !== 'loading'
   React.useEffect(() => {
-    loadPlayer(videoElement.current, {
+    const loadTask = loadPlayer(videoElement.current, {
       container: videoContainer.current,
       autoplay: false,
       source,
@@ -6122,9 +6211,15 @@ const Video = ({
       if (playerRef) {
         playerRef.curret = basePlayer
       }
+
+      return basePlayer
     })
     return () =>
-      player === null || player === void 0 ? void 0 : player.destroy()
+      loadTask.then(currentPlayer =>
+        currentPlayer === null || currentPlayer === void 0
+          ? void 0
+          : currentPlayer.destroy()
+      )
   }, [])
   React.useEffect(() => {
     if (source && (source.dash || source.hls || source.native) && player) {
@@ -6148,10 +6243,6 @@ const Video = ({
     source === null || source === void 0 ? void 0 : source.hls,
     source === null || source === void 0 ? void 0 : source.dash,
   ])
-  React.useEffect(
-    () => () => player === null || player === void 0 ? void 0 : player.unload(),
-    []
-  )
   React.useEffect(
     () =>
       subscribePlaybackState(videoElement.current, (event, state) => {
@@ -6282,15 +6373,6 @@ Video.propTypes = {
   videoRef: PropTypes.oneOfType([PropTypes.object, PropTypes.func]),
   playerRef: PropTypes.object,
 }
-;({
-  style: PropTypes.object,
-  plugins: PropTypes.array,
-  autohide: PropTypes.bool,
-  seekbar: PropTypes.object,
-  children: PropTypes.node,
-  getLayoutProps: PropTypes.func,
-  autoplay: PropTypes.bool,
-})
 
 const shouldShowSubtitles = subtitlesMenu =>
   subtitlesMenu.length > 0 || subtitlesMenu[0]
@@ -6712,7 +6794,9 @@ const sizes$1 = {
 
 const useLinkState = (request, dependencies = []) => {
   const [state, setState] = React.useState()
-  React.useEffect(() => request(setState), dependencies)
+  React.useEffect(() => {
+    request(setState)
+  }, dependencies)
   return state
 }
 
@@ -6881,7 +6965,7 @@ const PremiumPlayer = ({
   }))
 
   const fetchSettings = () => {
-    const contentType = Number.isFinite(videoRef.current.duration)
+    const contentType = isFinite(videoRef.current.duration)
     setSettings(current => ({
       preferred: current.preferred,
       ...getSettingsData({
@@ -7074,7 +7158,7 @@ const PremiumPlayer = ({
   }, [])
   const canSeek =
     playbackState !== 'ended' &&
-    Number.isFinite(
+    isFinite(
       (_videoRef$current2 = videoRef.current) === null ||
         _videoRef$current2 === void 0
         ? void 0
@@ -7091,7 +7175,7 @@ const PremiumPlayer = ({
           uiType !== 'desktop' && (waiting || /loading/.test(playbackState)),
         onClick: () => togglePlay(),
       }),
-      ...(Number.isFinite(playbackTime.duration) && {
+      ...(isFinite(playbackTime.duration) && {
         rewindButton: /*#__PURE__*/ jsxRuntime.jsx(Button, {
           startIcon: 'rewind10',
           title: 'KKS.PLAYER.REWIND',
@@ -7120,7 +7204,7 @@ const PremiumPlayer = ({
       }),
     },
     seekbar:
-      Number.isFinite(playbackTime.duration) &&
+      isFinite(playbackTime.duration) &&
       /*#__PURE__*/ jsxRuntime.jsx(
         Seekbar$1, // TODO ensure response quickly to forward backward 10
         {
@@ -7130,7 +7214,7 @@ const PremiumPlayer = ({
           play: () => togglePlay('playing'),
           pause: () => togglePlay('paused'),
           seek:
-            Number.isFinite(
+            isFinite(
               (_videoRef$current3 = videoRef.current) === null ||
                 _videoRef$current3 === void 0
                 ? void 0
@@ -7194,7 +7278,7 @@ const PremiumPlayer = ({
         ...videoProps,
         videoRef: multiRef(videoRef, videoProps.videoRef),
         source: playbackState !== 'error' && sourceOverride,
-        drm: getDrmConfig(drm),
+        drm: drm,
         playbackState: targetState.playbackState,
         currentTime: targetState.currentTime,
         playbackRate: settings.values.speed,
@@ -7799,9 +7883,12 @@ const getEnterpriseDrmHeaders = ({token}) => ({
   'X-Custom-Data': `token_type=playback&token_value=${token}`,
 })
 
+const preloadMap = new Map()
+
 const PremiumPlusPlayer = ({
   controls,
-  preload = 'auto',
+  preload: preload$1 = 'auto',
+  preloadList = [],
   currentTime,
   quality,
   host,
@@ -7813,7 +7900,7 @@ const PremiumPlusPlayer = ({
   contentId,
   autoplayNext,
   thumbnailSeeking,
-  plugins,
+  plugins = [],
   coverImageUrl,
   recommendation,
   playerRef,
@@ -7843,6 +7930,8 @@ const PremiumPlusPlayer = ({
   const [uiState, dispatch] = React.useReducer(reduceUi, initState$1)
 
   const endSession = ({preserveSource} = {}) => {
+    var _lastSession$current
+
     preferAppTime.current = false
 
     if (!preserveSource) {
@@ -7854,7 +7943,15 @@ const PremiumPlusPlayer = ({
       })
     }
 
-    lastSession.current = lastSession.current.end()
+    if (
+      (_lastSession$current = lastSession.current) !== null &&
+      _lastSession$current !== void 0 &&
+      _lastSession$current.end
+    ) {
+      lastSession.current = {
+        request: lastSession.current.end(),
+      }
+    }
   }
 
   const load = async () => {
@@ -7872,7 +7969,7 @@ const PremiumPlusPlayer = ({
 
     logTarget.current = mapLogEvents({
       playerName: ['shaka', 'bitmovin'].find(name => name in rest),
-      version: '1.9.0-rc.0',
+      version: '1.9.0-rc.6',
       video: videoRef.current,
     })
 
@@ -7914,6 +8011,7 @@ const PremiumPlusPlayer = ({
         })
         load()
       },
+      cache: preloadMap,
     } // TODO ignore live end error from /start /info
     // TODO try to clear session on error
 
@@ -7968,12 +8066,40 @@ const PremiumPlusPlayer = ({
   }
 
   React.useEffect(() => {
-    if (preload === 'auto') {
+    if (preload$1 === 'auto' && contentType && contentId) {
       load()
     }
 
     return () => endSession()
   }, [contentType, contentId])
+  React.useEffect(
+    () =>
+      preload(
+        createApi({
+          host,
+          accessToken,
+          deviceId,
+          headers,
+          params,
+        }),
+        preloadList,
+        {
+          id: contentId,
+          type: contentType,
+        },
+        preloadMap
+      ),
+    [
+      accessToken,
+      contentId,
+      contentType,
+      deviceId,
+      headers,
+      host,
+      params,
+      preloadList,
+    ]
+  )
   React.useImperativeHandle(playerRef, () => ({
     load,
     getVideo: () => videoRef.current,
@@ -8040,25 +8166,25 @@ const PremiumPlusPlayer = ({
       setPlaybackState(state)
 
       if (state === 'error') {
-        var _lastSession$current$, _lastSession$current
+        var _lastSession$current$, _lastSession$current2
 
-        ;(_lastSession$current$ = (_lastSession$current = lastSession.current)
+        ;(_lastSession$current$ = (_lastSession$current2 = lastSession.current)
           .end) === null || _lastSession$current$ === void 0
           ? void 0
-          : _lastSession$current$.call(_lastSession$current)
-        lastSession.current.request = 'cancel'
+          : _lastSession$current$.call(_lastSession$current2)
+        lastSession.current = {}
       }
 
       if (
         (state === 'paused' && playbackState !== 'loading') ||
         event.type === 'seeking'
       ) {
-        var _lastSession$current$2, _lastSession$current2
+        var _lastSession$current$2, _lastSession$current3
 
-        ;(_lastSession$current$2 = (_lastSession$current2 = lastSession.current)
+        ;(_lastSession$current$2 = (_lastSession$current3 = lastSession.current)
           .updateLastPlayed) === null || _lastSession$current$2 === void 0
           ? void 0
-          : _lastSession$current$2.call(_lastSession$current2)
+          : _lastSession$current$2.call(_lastSession$current3)
       }
 
       if (state === 'ended') {
@@ -8090,7 +8216,8 @@ const PremiumPlusPlayer = ({
     },
     overrideUi:
       uiState.ad.total > 0 &&
-      (uiElements => mergeAdUi(uiElements, uiState.ad, plugins)),
+      (uiElements =>
+        mergeAdUi(uiElements, uiState.ad, plugins, videoRef.current)),
     ...rest,
     style: recommendation && {
       '--bottom-spacing': '5rem',
@@ -8122,7 +8249,7 @@ const PremiumPlusPlayer = ({
           children: recommendation.content,
         }),
       contentData.end && /*#__PURE__*/ jsxRuntime.jsx(LiveEnd, {}),
-      preload === 'none' &&
+      preload$1 === 'none' &&
         coverImageUrl &&
         !playbackInfo.source &&
         /*#__PURE__*/ jsxRuntime.jsx(CoverImage, {
@@ -8149,6 +8276,12 @@ PremiumPlusPlayer.propTypes = {
   plugins: PropTypes.array,
   coverImageUrl: PropTypes.string,
   recommendation: PropTypes.object,
+  preloadList: PropTypes.arrayOf(
+    PropTypes.shape({
+      contentType: PropTypes.oneOf(['videos', 'lives']),
+      contentId: PropTypes.string,
+    })
+  ),
   playerRef: PropTypes.string,
   children: PropTypes.node,
   onError: PropTypes.func,
@@ -8198,6 +8331,7 @@ const Player = /*#__PURE__*/ React.forwardRef(
       coverImageUrl,
       plugins = [],
       sentry = {},
+      preloadList = [],
       onBack,
       onChangeVideo,
       onClickSettingButton,
@@ -8274,6 +8408,7 @@ const Player = /*#__PURE__*/ React.forwardRef(
       thumbnailSeeking: thumbnailSeeking,
       coverImageUrl: coverImageUrl,
       recommendation: recommendation,
+      preloadList: preloadList,
       onBack: onBack,
       onChange: content =>
         onChangeVideo({

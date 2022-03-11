@@ -1,13 +1,15 @@
 {
   "name": "playcraft",
-  "version": "1.9.0-rc.0",
+  "version": "1.9.0-rc.6",
   "module": "dist/playcraft.module.js",
   "main": "dist/playcraft.js",
+  "type": "module",
   "types": "./index.d.ts",
   "files": [
     "dist",
     "plugins.js",
     "core.js",
+    "react.js",
     "modules.js"
   ],
   "repository": {
@@ -75,6 +77,7 @@
     "react-dom": "17.0.2",
     "rollup": "^2.60.0",
     "rollup-plugin-includepaths": "^0.2.4",
+    "shaka-player": "^3.3.0",
     "standard-version": "^9.3.2",
     "xmldom": "^0.6.0"
   },
@@ -91,14 +94,28 @@
     "raf": "^3.4.1",
     "react-cool-dimensions": "^2.0.7",
     "react-cool-onclickoutside": "1.7.0",
-    "shaka-player": "3.3.0",
     "ua-parser-js": "^1.0.2",
     "zustand": "^3.6.5"
   },
   "peerDependencies": {
     "@babel/runtime": "^7.0.0",
     "react": ">=16.14.0",
-    "react-dom": ">=16.14.0"
+    "react-dom": ">=16.14.0",
+    "shaka-player": "3.3.0"
+  },
+  "peerDependenciesMeta": {
+    "@babel/runtime": {
+      "optional": true
+    },
+    "react": {
+      "optional": true
+    },
+    "react-dom": {
+      "optional": true
+    },
+    "shaka-player": {
+      "optional": true
+    }
   },
   "browserslist": [
     "IE 11"
@@ -133,6 +150,7 @@
       "/demo/**/*.bundle.*",
       "/plugins.js",
       "/core.js",
+      "/react.js",
       "/modules.js"
     ],
     "parser": "@babel/eslint-parser",
@@ -297,7 +315,7 @@
   },
   "standard-version": {
     "scripts": {
-      "postbump": "yarn build && git add dist plugins.js core.js modules.js"
+      "postbump": "yarn build && git add dist plugins.js core.js react.js modules.js"
     }
   }
 }
